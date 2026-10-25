@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pysurface"
+version = "0.1.0"
+description = "A compact, navigable report of a Python package's API surface: declarations, docstrings and comments, no bodies"
+readme = "README.md"
+license = "BSL-1.0"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+pysurface = "pysurface.core:main"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
