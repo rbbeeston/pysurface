@@ -98,6 +98,14 @@ A file that does not parse is shown as a one-line note in its section, and a war
 - Instance attributes are read from `__init__` and `__post_init__` only. Attributes first set in other methods, or through `setattr`, do not appear.
 - `if` and `try` blocks are followed at module level only, not inside class bodies.
 
+## pysurface's own report
+
+`doc/api/pysurface.api.md` and `.html` are pysurface's report on itself, regenerated whenever the code changes:
+
+```
+PYTHONPATH=src python -m pysurface src/pysurface -o doc/api --name pysurface --source-base ../../src/pysurface/
+```
+
 ## Credits and license
 
 The layout rules follow [vibelight](https://github.com/cppalliance/vibelight), which does the same for Rust crates.

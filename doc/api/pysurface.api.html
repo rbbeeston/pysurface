@@ -1,0 +1,162 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pysurface API surface</title><style>
+:root{--bg:#fff;--fg:#1f1e1c;--mut:#6b6862;--line:#e4e1db;--side:#f7f6f2;--kw:#8a3ffc;--nm:#0f62fe;--cm:#5f7a3a}
+@media(prefers-color-scheme:dark){:root{--bg:#191817;--fg:#ecebe8;--mut:#a19d96;--line:#3a3835;--side:#211f1e;--kw:#be95ff;--nm:#78a9ff;--cm:#a7c080}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,system-ui,sans-serif}
+nav{position:fixed;top:0;left:0;bottom:0;width:300px;overflow:auto;background:var(--side);border-right:1px solid var(--line);padding:12px 10px;font-size:12.5px}
+nav a{color:var(--fg);text-decoration:none;display:block;padding:1px 4px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+nav a:hover{background:var(--line)}nav .m{font-weight:600;margin-top:6px}nav .i{padding-left:16px;color:var(--mut)}
+main{margin-left:300px;padding:16px 24px;max-width:1100px}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:22px 0 6px;border-top:1px solid var(--line);padding-top:12px}
+h2 a.src{font-weight:400;font-size:12px;color:var(--mut);margin-left:8px}.sum{color:var(--mut);margin:0 0 10px}
+pre{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;margin:0}
+.k{color:var(--kw)}.n{color:var(--nm);font-weight:600}.c{color:var(--mut)}.d{color:var(--cm)}
+a.t{color:inherit;text-decoration:underline dotted}a.ln{color:var(--mut);font-size:11px;text-decoration:none;margin-left:6px}
+@media(max-width:800px){nav{position:static;width:auto;border:0}main{margin-left:0}}
+</style></head><body>
+<nav><b>pysurface API surface</b><a class="m" href="#init-py">__init__.py</a><a class="m" href="#main-py">__main__.py</a><a class="m" href="#core-py">core.py</a><a class="i" href="#core.Ids">class Ids</a><a class="i" href="#core.InputError">class InputError</a><a class="i" href="#core.Item">class Item</a><a class="i" href="#core.Module">class Module</a><a class="i" href="#core.anchor">anchor</a><a class="i" href="#core.args_of">args_of</a><a class="i" href="#core.comment_block">comment_block</a><a class="i" href="#core.comment_map">comment_map</a><a class="i" href="#core.count">count</a><a class="i" href="#core.deco_lines">deco_lines</a><a class="i" href="#core.doc_block">doc_block</a><a class="i" href="#core.docstring">docstring</a><a class="i" href="#core.excluded">excluded</a><a class="i" href="#core.first_line">first_line</a><a class="i" href="#core.git">git</a><a class="i" href="#core.html_lines">html_lines</a><a class="i" href="#core.instance_attributes">instance_attributes</a><a class="i" href="#core.item_text">item_text</a><a class="i" href="#core.leading_comments">leading_comments</a><a class="i" href="#core.load">load</a><a class="i" href="#core.main">main</a><a class="i" href="#core.make_class">make_class</a><a class="i" href="#core.make_def">make_def</a><a class="i" href="#core.module_statements">module_statements</a><a class="i" href="#core.module_text">module_text</a><a class="i" href="#core.parse_module">parse_module</a><a class="i" href="#core.render_diff">render_diff</a><a class="i" href="#core.render_html">render_html</a><a class="i" href="#core.render_md">render_md</a><a class="i" href="#core.run">run</a><a class="i" href="#core.short">short</a><a class="i" href="#core.sources_from_dir">sources_from_dir</a><a class="i" href="#core.sources_from_git">sources_from_git</a><a class="i" href="#core.trailing_comment">trailing_comment</a></nav>
+<main><h1>pysurface API surface</h1><p class="sum">3 modules, 4 classes, 30 functions, 2 methods, 17 fields. Declarations, docstrings and comments only; no function bodies.</p>
+<h2 id="init-py">__init__.py<a class="src" href="../../src/pysurface/__init__.py">source</a></h2><pre><span class="d">&quot;&quot;&quot;pysurface: a compact, navigable report of a Python package&#x27;s API surface.&quot;&quot;&quot;</span></pre><h2 id="main-py">__main__.py<a class="src" href="../../src/pysurface/__main__.py">source</a></h2><pre></pre><h2 id="core-py">core.py<a class="src" href="../../src/pysurface/core.py">source</a></h2><pre><span class="d">&quot;&quot;&quot;pysurface: a compact, navigable report of a Python package&#x27;s API surface.</span>
+<span class="d"></span>
+<span class="d">Reads Python source (a directory, or a git ref of a repository) without importing</span>
+<span class="d">or running it, and writes one Markdown file and one self-contained HTML file:</span>
+<span class="d">every module, class, field, method, function and constant, with signatures,</span>
+<span class="d">docstrings and the comments written beside the code, and no bodies.</span>
+<span class="d"></span>
+<span class="d">Built for people and language models that need the shape of a codebase quickly:</span>
+<span class="d">one file to read instead of dozens of source files to open. No AI, no network,</span>
+<span class="d">no imports of the package, so it runs in a second or two on a large package.</span>
+<span class="d"></span>
+<span class="d">  pysurface PATH [-o OUT] [--name NAME]          # a directory or a .py file</span>
+<span class="d">  pysurface REPO --ref REF [--root lib] [-o OUT]   # a git ref, read with git show</span>
+<span class="d">  pysurface REPO --diff OLD NEW [--root lib]       # declaration changes only</span>
+<span class="d"></span>
+<span class="d">Options: --private keeps module-level private names (inner private members of a</span>
+<span class="d">class are always kept, under &quot;# private&quot;); --brief keeps only the first paragraph</span>
+<span class="d">of each docstring; --no-source-links drops file:line links, so the output depends</span>
+<span class="d">only on the declarations.</span>
+<span class="d"></span>
+<span class="d">Layout rules (after vibelight, a tool that does the same for Rust):</span>
+<span class="d">- one section per module, in path order, opening with the module docstring;</span>
+<span class="d">- classes first, sorted by name; then functions; then constants;</span>
+<span class="d">- a class shows its bases and decorators, its docstring, fields in declared order</span>
+<span class="d">  (dataclass and NamedTuple field order is part of the constructor), then methods</span>
+<span class="d">  sorted by name, public before private;</span>
+<span class="d">- comments: the comment block directly above a declaration, and a comment at the</span>
+<span class="d">  end of a field&#x27;s line, are kept with it;</span>
+<span class="d">- defaults and constant values longer than 60 characters print as &quot;...&quot;;</span>
+<span class="d">- output is deterministic: reordering or moving code within a module leaves it</span>
+<span class="d">  unchanged.</span>
+<span class="d">&quot;&quot;&quot;</span>
+
+<span class="k">class </span><span class="n" id="core.Ids">Ids</span>:<a class="ln" href="../../src/pysurface/core.py#L472">core.py:472</a>
+<span class="d">    &quot;&quot;&quot;Unique HTML ids: a repeated name (an overload, a property&#x27;s setter, a definition in both</span>
+<span class="d">    branches of an if) gets a -2, -3 ... suffix in document order.</span>
+<span class="d">    &quot;&quot;&quot;</span>
+    <span class="k">self.</span><span class="n" id="core.Ids.seen">seen</span>: dict[str, int] = {}<a class="ln" href="../../src/pysurface/core.py#L476">core.py:476</a>
+    <span class="k">self.</span><span class="n" id="core.Ids.first">first</span>: dict[str, str] = {}<a class="ln" href="../../src/pysurface/core.py#L477">core.py:477</a>
+    <span class="k">def </span><span class="n" id="core.Ids.__call__">__call__</span>(self, qual: str) -&gt; str: ...<a class="ln" href="../../src/pysurface/core.py#L479">core.py:479</a>
+    <span class="k">def </span><span class="n" id="core.Ids.__init__">__init__</span>(self) -&gt; None: ...<a class="ln" href="../../src/pysurface/core.py#L475">core.py:475</a>
+
+<span class="k">class </span><span class="n" id="core.InputError">InputError</span>(Exception):<a class="ln" href="../../src/pysurface/core.py#L56">core.py:56</a>
+<span class="d">    &quot;&quot;&quot;The input cannot be used: not a directory, file or repository, or nothing to read.&quot;&quot;&quot;</span>
+
+<span class="k">@dataclass</span>
+<span class="k">class </span><span class="n" id="core.Item">Item</span>:<a class="ln" href="../../src/pysurface/core.py#L123">core.py:123</a>
+    <span class="n" id="core.Item.kind">kind</span>: str  <span class="c"># &quot;class&quot; | &quot;def&quot; | &quot;field&quot; | &quot;attr&quot; | &quot;const&quot;</span><a class="ln" href="../../src/pysurface/core.py#L124">core.py:124</a>
+    <span class="n" id="core.Item.name">name</span>: str<a class="ln" href="../../src/pysurface/core.py#L125">core.py:125</a>
+    <span class="n" id="core.Item.qual">qual</span>: str  <span class="c"># module-qualified anchor id (made unique when rendered)</span><a class="ln" href="../../src/pysurface/core.py#L126">core.py:126</a>
+    <span class="n" id="core.Item.lineno">lineno</span>: int<a class="ln" href="../../src/pysurface/core.py#L127">core.py:127</a>
+    <span class="n" id="core.Item.text">text</span>: list[str]  <span class="c"># declaration lines: kept decorators, then the declaration itself</span><a class="ln" href="../../src/pysurface/core.py#L128">core.py:128</a>
+    <span class="n" id="core.Item.lead">lead</span>: list[str] = field(default_factory=list)  <span class="c"># the comment block directly above</span><a class="ln" href="../../src/pysurface/core.py#L129">core.py:129</a>
+    <span class="n" id="core.Item.tail">tail</span>: str | None = None  <span class="c"># the comment at the end of the declaration&#x27;s own line</span><a class="ln" href="../../src/pysurface/core.py#L130">core.py:130</a>
+    <span class="n" id="core.Item.doc">doc</span>: list[str] = field(default_factory=list)<a class="ln" href="../../src/pysurface/core.py#L131">core.py:131</a>
+    <span class="n" id="core.Item.members">members</span>: list[&#x27;<a class="t" href="#core.Item">Item</a>&#x27;] = field(default_factory=list)<a class="ln" href="../../src/pysurface/core.py#L132">core.py:132</a>
+    <span class="n" id="core.Item.private">private</span>: bool = False<a class="ln" href="../../src/pysurface/core.py#L133">core.py:133</a>
+
+<span class="k">@dataclass</span>
+<span class="k">class </span><span class="n" id="core.Module">Module</span>:<a class="ln" href="../../src/pysurface/core.py#L137">core.py:137</a>
+    <span class="n" id="core.Module.path">path</span>: str<a class="ln" href="../../src/pysurface/core.py#L138">core.py:138</a>
+    <span class="n" id="core.Module.doc">doc</span>: list[str]<a class="ln" href="../../src/pysurface/core.py#L139">core.py:139</a>
+    <span class="n" id="core.Module.items">items</span>: list[<a class="t" href="#core.Item">Item</a>]<a class="ln" href="../../src/pysurface/core.py#L140">core.py:140</a>
+    <span class="n" id="core.Module.hidden">hidden</span>: int = 0<a class="ln" href="../../src/pysurface/core.py#L141">core.py:141</a>
+    <span class="n" id="core.Module.error">error</span>: str = &#x27;&#x27;<a class="ln" href="../../src/pysurface/core.py#L142">core.py:142</a>
+
+<span class="k">def </span><span class="n" id="core.anchor">anchor</span>(path: str) -&gt; str: ...<a class="ln" href="../../src/pysurface/core.py#L431">core.py:431</a>
+
+<span class="k">def </span><span class="n" id="core.args_of">args_of</span>(fn) -&gt; str: ...<a class="ln" href="../../src/pysurface/core.py#L198">core.py:198</a>
+
+<span class="k">def </span><span class="n" id="core.comment_block">comment_block</span>(lines: list[str], indent: str) -&gt; list[str]: ...<a class="ln" href="../../src/pysurface/core.py#L368">core.py:368</a>
+
+<span class="k">def </span><span class="n" id="core.comment_map">comment_map</span>(src: str) -&gt; tuple[dict[int, str], set[int]]:<a class="ln" href="../../src/pysurface/core.py#L145">core.py:145</a>
+<span class="d">    &quot;&quot;&quot;line -&gt; comment text; and the set of lines that hold only a comment.&quot;&quot;&quot;</span>
+
+<span class="k">def </span><span class="n" id="core.count">count</span>(mods: list[<a class="t" href="#core.Module">Module</a>]) -&gt; dict: ...<a class="ln" href="../../src/pysurface/core.py#L415">core.py:415</a>
+
+<span class="k">def </span><span class="n" id="core.deco_lines">deco_lines</span>(node) -&gt; list[str]: ...<a class="ln" href="../../src/pysurface/core.py#L232">core.py:232</a>
+
+<span class="k">def </span><span class="n" id="core.doc_block">doc_block</span>(lines: list[str], indent: str) -&gt; list[str]: ...<a class="ln" href="../../src/pysurface/core.py#L372">core.py:372</a>
+
+<span class="k">def </span><span class="n" id="core.docstring">docstring</span>(node, brief: bool) -&gt; list[str]: ...<a class="ln" href="../../src/pysurface/core.py#L187">core.py:187</a>
+
+<span class="k">def </span><span class="n" id="core.excluded">excluded</span>(path: str, globs: tuple[str, ...]) -&gt; bool: ...<a class="ln" href="../../src/pysurface/core.py#L60">core.py:60</a>
+
+<span class="k">def </span><span class="n" id="core.first_line">first_line</span>(node) -&gt; int: ...<a class="ln" href="../../src/pysurface/core.py#L242">core.py:242</a>
+
+<span class="k">def </span><span class="n" id="core.git">git</span>(repo: str, *args: str) -&gt; str: ...<a class="ln" href="../../src/pysurface/core.py#L66">core.py:66</a>
+
+<span class="k">def </span><span class="n" id="core.html_lines">html_lines</span>(m: <a class="t" href="#core.Module">Module</a>, names: dict[str, str], src_link: str | None, ids: <a class="t" href="#core.Ids">Ids</a>) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L485">core.py:485</a>
+<span class="d">    &quot;&quot;&quot;Render one module&#x27;s declarations with anchors on every declaration and links on known type names.&quot;&quot;&quot;</span>
+
+<span class="k">def </span><span class="n" id="core.instance_attributes">instance_attributes</span>(cls, known: set[str], qual: str, comments, only) -&gt; list[<a class="t" href="#core.Item">Item</a>]:<a class="ln" href="../../src/pysurface/core.py#L255">core.py:255</a>
+<span class="d">    &quot;&quot;&quot;Attributes assigned as self.x in __init__ (or __post_init__), in first-assignment order.&quot;&quot;&quot;</span>
+
+<span class="k">def </span><span class="n" id="core.item_text">item_text</span>(it: <a class="t" href="#core.Item">Item</a>, indent: str = &#x27;&#x27;) -&gt; list[str]: ...<a class="ln" href="../../src/pysurface/core.py#L380">core.py:380</a>
+
+<span class="k">def </span><span class="n" id="core.leading_comments">leading_comments</span>(first_line: int, comments: dict[int, str], only: set[int]) -&gt; list[str]: ...<a class="ln" href="../../src/pysurface/core.py#L163">core.py:163</a>
+
+<span class="k">def </span><span class="n" id="core.load">load</span>(args, ref: str | None) -&gt; list[<a class="t" href="#core.Module">Module</a>]: ...<a class="ln" href="../../src/pysurface/core.py#L592">core.py:592</a>
+
+<span class="k">def </span><span class="n" id="core.main">main</span>(argv: list[str] | None = None) -&gt; int: ...<a class="ln" href="../../src/pysurface/core.py#L604">core.py:604</a>
+
+<span class="k">def </span><span class="n" id="core.make_class">make_class</span>(cls, mod_qual, comments, only, brief, context=None) -&gt; <a class="t" href="#core.Item">Item</a>: ...<a class="ln" href="../../src/pysurface/core.py#L279">core.py:279</a>
+
+<span class="k">def </span><span class="n" id="core.make_def">make_def</span>(fn, qual, comments, only, brief, context=None) -&gt; <a class="t" href="#core.Item">Item</a>: ...<a class="ln" href="../../src/pysurface/core.py#L246">core.py:246</a>
+
+<span class="k">def </span><span class="n" id="core.module_statements">module_statements</span>(body, context=None):<a class="ln" href="../../src/pysurface/core.py#L312">core.py:312</a>
+<span class="d">    &quot;&quot;&quot;Top-level statements, descending into module-level if/try blocks. Yields (node, context),</span>
+<span class="d">    where context names the block a definition sits in, such as &quot;in: if TYPE_CHECKING&quot;.</span>
+<span class="d">    &quot;&quot;&quot;</span>
+
+<span class="k">def </span><span class="n" id="core.module_text">module_text</span>(m: <a class="t" href="#core.Module">Module</a>) -&gt; list[str]: ...<a class="ln" href="../../src/pysurface/core.py#L402">core.py:402</a>
+
+<span class="k">def </span><span class="n" id="core.parse_module">parse_module</span>(path: str, src: str, private: bool, brief: bool) -&gt; <a class="t" href="#core.Module">Module</a>: ...<a class="ln" href="../../src/pysurface/core.py#L331">core.py:331</a>
+
+<span class="k">def </span><span class="n" id="core.render_diff">render_diff</span>(old: list[<a class="t" href="#core.Module">Module</a>], new: list[<a class="t" href="#core.Module">Module</a>], title: str) -&gt; str: ...<a class="ln" href="../../src/pysurface/core.py#L568">core.py:568</a>
+
+<span class="k">def </span><span class="n" id="core.render_html">render_html</span>(mods: list[<a class="t" href="#core.Module">Module</a>], title: str, src_link: str | None) -&gt; str: ...<a class="ln" href="../../src/pysurface/core.py#L538">core.py:538</a>
+
+<span class="k">def </span><span class="n" id="core.render_md">render_md</span>(mods: list[<a class="t" href="#core.Module">Module</a>], title: str, src_link: str | None) -&gt; str: ...<a class="ln" href="../../src/pysurface/core.py#L435">core.py:435</a>
+
+<span class="k">def </span><span class="n" id="core.run">run</span>(argv: list[str] | None) -&gt; int: ...<a class="ln" href="../../src/pysurface/core.py#L612">core.py:612</a>
+
+<span class="k">def </span><span class="n" id="core.short">short</span>(node) -&gt; str: ...<a class="ln" href="../../src/pysurface/core.py#L182">core.py:182</a>
+
+<span class="k">def </span><span class="n" id="core.sources_from_dir">sources_from_dir</span>(path: str, skip: tuple[str, ...]) -&gt; dict[str, str]: ...<a class="ln" href="../../src/pysurface/core.py#L100">core.py:100</a>
+
+<span class="k">def </span><span class="n" id="core.sources_from_git">sources_from_git</span>(repo: str, ref: str, root: str, skip: tuple[str, ...]) -&gt; dict[str, str]:<a class="ln" href="../../src/pysurface/core.py#L75">core.py:75</a>
+<span class="d">    &quot;&quot;&quot;Every .py file under root at ref, read through one `git cat-file --batch` process.&quot;&quot;&quot;</span>
+
+<span class="k">def </span><span class="n" id="core.trailing_comment">trailing_comment</span>(node, comments: dict[int, str], only: set[int]) -&gt; str | None:<a class="ln" href="../../src/pysurface/core.py#L174">core.py:174</a>
+<span class="d">    &quot;&quot;&quot;The comment at the end of the line where the statement ends, if that line also holds code.&quot;&quot;&quot;</span>
+
+<span class="n" id="core.CSS">CSS</span> = ...<a class="ln" href="../../src/pysurface/core.py#L456">core.py:456</a>
+
+<span class="c"># Decorators that change what a declaration means. Matched on the last dotted component,</span>
+<span class="c"># so @abc.abstractmethod, @typing.overload and @functools.lru_cache(...) are kept too.</span>
+<span class="n" id="core.KEEP_DECOS">KEEP_DECOS</span> = ...<a class="ln" href="../../src/pysurface/core.py#L226">core.py:226</a>
+
+<span class="n" id="core.MAXV">MAXV</span> = 60<a class="ln" href="../../src/pysurface/core.py#L50">core.py:50</a>
+
+<span class="n" id="core.SKIP_DIRS">SKIP_DIRS</span> = ...<a class="ln" href="../../src/pysurface/core.py#L53">core.py:53</a>
+
+<span class="n" id="core.TEST_GLOBS">TEST_GLOBS</span> = ...<a class="ln" href="../../src/pysurface/core.py#L52">core.py:52</a></pre></main></body></html>

@@ -409,7 +409,7 @@ def module_text(m: Module) -> list[str]:
         out += item_text(it)
     if m.hidden:
         out += ["", f"# + {m.hidden} private module-level name{'s' if m.hidden != 1 else ''}"]
-    return out
+    return out or ["# no declarations"]
 
 
 def count(mods: list[Module]) -> dict:

@@ -335,3 +335,18 @@ def test_css_defines_each_class_once():
     from pysurface.core import CSS
     rules = re.findall(r"(?<![\w-])\.([a-z])\{", CSS)
     assert len(rules) == len(set(rules))
+
+
+def test_module_without_declarations_says_so():
+    assert module_text(parse_module("m.py", "import os\n", False, False)) == ["# no declarations"]
+
+
+def test_own_report_is_current():
+    """doc/api must match what pysurface writes for its own source now."""
+    root = Path(__file__).parents[1]
+    out = root / "build" / "selfcheck"
+    assert main([str(root / "src" / "pysurface"), "-o", str(out), "--name", "pysurface",
+                 "--source-base", "../../src/pysurface/"]) == 0
+    for ext in ("md", "html"):
+        assert (out / f"pysurface.api.{ext}").read_text() == (root / "doc" / "api" / f"pysurface.api.{ext}").read_text(), \
+            "regenerate doc/api (see README)"
