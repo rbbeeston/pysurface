@@ -46,7 +46,8 @@ pysurface <repo> --diff <old-ref> <new-ref> [--root <dir>]
 - `--name` names the report. It defaults to the directory's name.
 - `--private` keeps module-level names that start with `_`. Without it they are counted, not shown. A class's private members are always shown, after its public ones under a `# private` line.
 - `--brief` keeps only the first paragraph of each docstring.
-- `--no-source-links` leaves out the links back to files and lines. The output then depends only on the declarations, so moving code within a module, reordering items or reformatting leaves the files byte for byte the same.
+- `--no-source-links` leaves out the links back to files and lines. The output then depends only on the declarations, so reformatting code or reordering classes, functions, methods and constants leaves the files byte for byte the same. Fields keep their declared order on purpose (it is a dataclass's constructor order), so reordering fields does change the output.
+- `--source-base URL` puts a prefix in front of every source link, for example `../../` when the report lives two folders below the repository root, or a `https://github.com/<owner>/<repo>/blob/<ref>/` URL. Without it, links are relative paths from the output folder to the source.
 - `--exclude GLOB` leaves out matching paths, and may be repeated. Test files (`tests/`, `test_*.py`, `*_test.py`, `conftest.py`) are left out by default; `--include-tests` keeps them.
 
 pysurface prints the path of each file it writes on stdout, and the module count and time on stderr. Existing files with the same names are overwritten.
@@ -58,8 +59,11 @@ Each module gets one block. Its docstring comes first, then classes sorted by na
 - the decorators that change meaning (`@dataclass`, `@property`, `@staticmethod`, `@classmethod`, `@abstractmethod` and similar) and the bases;
 - the docstring;
 - fields and class constants in the order they are declared, because a dataclass's field order is its constructor's argument order;
+- instance attributes set as `self.x = ...` in `__init__` or `__post_init__`, in the order they are first assigned, so ordinary classes show their state too;
 - methods sorted by name, public ones first, then the private ones under `# private`;
 - nested classes.
+
+Definitions inside module-level `if` and `try` blocks (`if TYPE_CHECKING:`, version shims, `except ImportError:` fallbacks) are included, each with a comment naming the block it sits in, such as `# in: if TYPE_CHECKING`. A comment directly above a declaration stays above it, and a comment at the end of its line stays at the end; neither is ever moved to the other place.
 
 Function bodies are replaced by the docstring, or by `...` when there is none. Defaults and constant values longer than 60 characters print as `...`.
 
@@ -91,6 +95,8 @@ A file that does not parse is shown as a one-line note in its section, and a war
 - pysurface shows what is declared. Data held in plain dicts has no declaration, so its keys do not appear.
 - Names are not resolved across modules. A type name links in the HTML when a class of that name exists anywhere in the report, the first one found by path order.
 - Comments are kept only next to declarations. Comments inside function bodies are left out with the bodies.
+- Instance attributes are read from `__init__` and `__post_init__` only. Attributes first set in other methods, or through `setattr`, do not appear.
+- `if` and `try` blocks are followed at module level only, not inside class bodies.
 
 ## Credits and license
 

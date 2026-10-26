@@ -73,10 +73,28 @@ def git(repo: str, *args: str) -> str:
 
 
 def sources_from_git(repo: str, ref: str, root: str, skip: tuple[str, ...]) -> dict[str, str]:
-    args = ["ls-tree", "-r", "--name-only", ref] + (["--", root] if root else [])
-    names = [p for p in git(repo, *args).splitlines() if p.endswith(".py")]
-    names = [p for p in names if not excluded(p, skip) and not (set(p.split("/")[:-1]) & SKIP_DIRS)]
-    return {p: git(repo, "show", f"{ref}:{p}") for p in sorted(names)}
+    """Every .py file under root at ref, read through one `git cat-file --batch` process."""
+    args = ["ls-tree", "-r", ref] + (["--", root] if root else [])
+    entries = []
+    for line in git(repo, *args).splitlines():
+        meta, path = line.split("\t", 1)
+        mode, kind, sha = meta.split()
+        if kind != "blob" or not path.endswith(".py"):
+            continue
+        if excluded(path, skip) or set(path.split("/")[:-1]) & SKIP_DIRS:
+            continue
+        entries.append((path, sha))
+    if not entries:
+        return {}
+    proc = subprocess.run(["git", "-C", repo, "cat-file", "--batch"], input="".join(f"{sha}\n" for _, sha in entries).encode(),
+                          capture_output=True, check=True)
+    data, pos, out = proc.stdout, 0, {}
+    for path, _ in entries:
+        nl = data.index(b"\n", pos)
+        size = int(data[pos:nl].split()[2])
+        out[path] = data[nl + 1:nl + 1 + size].decode("utf-8", errors="replace")
+        pos = nl + 1 + size + 1
+    return dict(sorted(out.items()))
 
 
 def sources_from_dir(path: str, skip: tuple[str, ...]) -> dict[str, str]:
@@ -103,12 +121,13 @@ def sources_from_dir(path: str, skip: tuple[str, ...]) -> dict[str, str]:
 
 @dataclass
 class Item:
-    kind: str                 # "class" | "def" | "field" | "const"
+    kind: str                 # "class" | "def" | "field" | "attr" | "const"
     name: str
-    qual: str                 # module-qualified anchor id
+    qual: str                 # module-qualified anchor id (made unique when rendered)
     lineno: int
-    text: list[str]           # declaration lines (already indented within the block)
-    comments: list[str] = field(default_factory=list)
+    text: list[str]           # declaration lines: kept decorators, then the declaration itself
+    lead: list[str] = field(default_factory=list)   # the comment block directly above
+    tail: str | None = None   # the comment at the end of the declaration's own line
     doc: list[str] = field(default_factory=list)
     members: list["Item"] = field(default_factory=list)
     private: bool = False
@@ -150,6 +169,14 @@ def leading_comments(first_line: int, comments: dict[int, str], only: set[int]) 
         out.append(comments[ln])
         ln -= 1
     return [c for c in reversed(out) if c]
+
+
+def trailing_comment(node, comments: dict[int, str], only: set[int]) -> str | None:
+    """The comment at the end of the line where the statement ends, if that line also holds code."""
+    ln = getattr(node, "end_lineno", None) or node.lineno
+    if ln in comments and ln not in only:
+        return comments[ln] or None
+    return None
 
 
 def short(node) -> str:
@@ -194,17 +221,20 @@ def args_of(fn) -> str:
     return ", ".join(parts)
 
 
-KEEP_DECOS = ("staticmethod", "classmethod", "property", "abstractmethod", "cached_property", "overload",
-              "dataclass", "dataclasses.dataclass", "contextmanager", "functools.cache", "cache", "lru_cache",
-              "functools.lru_cache", "total_ordering", "runtime_checkable", "final", "unique")
+# Decorators that change what a declaration means. Matched on the last dotted component,
+# so @abc.abstractmethod, @typing.overload and @functools.lru_cache(...) are kept too.
+KEEP_DECOS = {"staticmethod", "classmethod", "property", "abstractmethod", "abstractproperty", "cached_property",
+              "overload", "override", "final", "dataclass", "contextmanager", "asynccontextmanager", "cache",
+              "lru_cache", "total_ordering", "runtime_checkable", "unique", "singledispatch",
+              "singledispatchmethod", "setter", "getter", "deleter"}
 
 
 def deco_lines(node) -> list[str]:
     out = []
     for d in node.decorator_list:
         s = ast.unparse(d)
-        head = s.split("(")[0]
-        if head in KEEP_DECOS or head.endswith((".setter", ".getter", ".deleter")):
+        last = s.split("(")[0].rsplit(".", 1)[-1]
+        if last in KEEP_DECOS:
             out.append("@" + s)
     return out
 
@@ -213,44 +243,89 @@ def first_line(node) -> int:
     return min([node.lineno] + [d.lineno for d in getattr(node, "decorator_list", [])])
 
 
-def make_def(fn, qual, comments, only, brief) -> Item:
+def make_def(fn, qual, comments, only, brief, context=None) -> Item:
     kw = "async def" if isinstance(fn, ast.AsyncFunctionDef) else "def"
     ret = " -> " + ast.unparse(fn.returns) if fn.returns else ""
     text = deco_lines(fn) + [f"{kw} {fn.name}({args_of(fn)}){ret}"]
-    return Item("def", fn.name, qual, fn.lineno, text, leading_comments(first_line(fn), comments, only),
+    lead = leading_comments(first_line(fn), comments, only) + ([context] if context else [])
+    return Item("def", fn.name, qual, fn.lineno, text, lead, None,
                 docstring(fn, brief), private=fn.name.startswith("_") and not fn.name.endswith("__"))
 
 
-def make_class(cls, mod_qual, comments, only, brief) -> Item:
+def instance_attributes(cls, known: set[str], qual: str, comments, only) -> list[Item]:
+    """Attributes assigned as self.x in __init__ (or __post_init__), in first-assignment order."""
+    out: list[Item] = []
+    seen = set(known)
+    for fn in cls.body:
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or fn.name not in ("__init__", "__post_init__"):
+            continue
+        stmts = sorted((n for n in ast.walk(fn) if isinstance(n, (ast.Assign, ast.AnnAssign))), key=lambda n: (n.lineno, n.col_offset))
+        for node in stmts:
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for t in targets:
+                if not (isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id == "self"):
+                    continue
+                if t.attr in seen:
+                    continue
+                seen.add(t.attr)
+                ann = f": {ast.unparse(node.annotation)}" if isinstance(node, ast.AnnAssign) else ""
+                val = f" = {short(node.value)}" if node.value is not None else ""
+                out.append(Item("attr", t.attr, f"{qual}.{t.attr}", node.lineno, [f"self.{t.attr}{ann}{val}"],
+                                leading_comments(node.lineno, comments, only), trailing_comment(node, comments, only),
+                                private=t.attr.startswith("_")))
+    return out
+
+
+def make_class(cls, mod_qual, comments, only, brief, context=None) -> Item:
     bases = ", ".join(ast.unparse(b) for b in cls.bases + list(cls.keywords))
     qual = f"{mod_qual}.{cls.name}"
+    lead = leading_comments(first_line(cls), comments, only) + ([context] if context else [])
     item = Item("class", cls.name, qual, cls.lineno, deco_lines(cls) + [f"class {cls.name}({bases})" if bases else f"class {cls.name}"],
-                leading_comments(first_line(cls), comments, only), docstring(cls, brief),
-                private=cls.name.startswith("_"))
+                lead, None, docstring(cls, brief), private=cls.name.startswith("_"))
     fields, methods, inner = [], [], []
     for node in cls.body:
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             s = f"{node.target.id}: {ast.unparse(node.annotation)}" + (f" = {short(node.value)}" if node.value is not None else "")
-            tail = comments.get(node.lineno) if node.lineno not in only else None
             fields.append(Item("field", node.target.id, f"{qual}.{node.target.id}", node.lineno, [s],
-                               leading_comments(node.lineno, comments, only) + ([tail] if tail else []),
+                               leading_comments(node.lineno, comments, only), trailing_comment(node, comments, only),
                                private=node.target.id.startswith("_")))
         elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             n = node.targets[0].id
             if n.startswith("__") and n.endswith("__"):
                 continue
-            tail = comments.get(node.lineno) if node.lineno not in only else None
             fields.append(Item("field", n, f"{qual}.{n}", node.lineno, [f"{n} = {short(node.value)}"],
-                               leading_comments(node.lineno, comments, only) + ([tail] if tail else []),
+                               leading_comments(node.lineno, comments, only), trailing_comment(node, comments, only),
                                private=n.startswith("_")))
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             methods.append(make_def(node, f"{qual}.{node.name}", comments, only, brief))
         elif isinstance(node, ast.ClassDef):
             inner.append(make_class(node, qual, comments, only, brief))
+    attrs = instance_attributes(cls, {f.name for f in fields}, qual, comments, only)
     methods.sort(key=lambda m: (m.private, m.name))
-    item.members = [f for f in fields if not f.private] + [m for m in methods if not m.private] + \
-        sorted(inner, key=lambda c: c.name) + [f for f in fields if f.private] + [m for m in methods if m.private]
+    item.members = ([f for f in fields if not f.private] + [a for a in attrs if not a.private]
+                    + [m for m in methods if not m.private] + sorted(inner, key=lambda c: c.name)
+                    + [f for f in fields if f.private] + [a for a in attrs if a.private]
+                    + [m for m in methods if m.private])
     return item
+
+
+def module_statements(body, context=None):
+    """Top-level statements, descending into module-level if/try blocks. Yields (node, context),
+    where context names the block a definition sits in, such as "in: if TYPE_CHECKING"."""
+    for node in body:
+        if isinstance(node, ast.If):
+            cond = ast.unparse(node.test)
+            cond = cond if len(cond) <= MAXV else "..."
+            yield from module_statements(node.body, f"in: if {cond}")
+            yield from module_statements(node.orelse, f"in: else of: if {cond}")
+        elif isinstance(node, ast.Try) or (hasattr(ast, "TryStar") and isinstance(node, ast.TryStar)):
+            yield from module_statements(node.body, "in: try")
+            for h in node.handlers:
+                yield from module_statements(h.body, f"in: except {ast.unparse(h.type)}" if h.type else "in: except")
+            yield from module_statements(node.orelse, "in: try ... else")
+            yield from module_statements(node.finalbody, "in: finally")
+        else:
+            yield node, context
 
 
 def parse_module(path: str, src: str, private: bool, brief: bool) -> Module:
@@ -262,15 +337,15 @@ def parse_module(path: str, src: str, private: bool, brief: bool) -> Module:
     comments, only = comment_map(src)
     classes, funcs, consts = [], [], []
     hidden = 0
-    for node in tree.body:
+    for node, ctx in module_statements(tree.body):
         if isinstance(node, ast.ClassDef):
-            c = make_class(node, mod_qual, comments, only, brief)
+            c = make_class(node, mod_qual, comments, only, brief, ctx)
             if c.private and not private:
                 hidden += 1
             else:
                 classes.append(c)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            f = make_def(node, f"{mod_qual}.{node.name}", comments, only, brief)
+            f = make_def(node, f"{mod_qual}.{node.name}", comments, only, brief, ctx)
             if f.private and not private:
                 hidden += 1
             else:
@@ -280,10 +355,11 @@ def parse_module(path: str, src: str, private: bool, brief: bool) -> Module:
             if isinstance(tgt, ast.Name) and (tgt.id.isupper() or tgt.id == "__all__") and (private or not tgt.id.startswith("_")):
                 ann = f": {ast.unparse(node.annotation)}" if isinstance(node, ast.AnnAssign) else ""
                 val = f" = {short(node.value)}" if node.value is not None else ""
-                tail = comments.get(node.lineno) if node.lineno not in only else None
                 consts.append(Item("const", tgt.id, f"{mod_qual}.{tgt.id}", node.lineno, [f"{tgt.id}{ann}{val}"],
-                                   leading_comments(node.lineno, comments, only) + ([tail] if tail else [])))
-    items = sorted(classes, key=lambda i: i.name) + sorted(funcs, key=lambda i: i.name) + sorted(consts, key=lambda i: i.name)
+                                   leading_comments(node.lineno, comments, only) + ([ctx] if ctx else []),
+                                   trailing_comment(node, comments, only)))
+    key = lambda i: (i.name, i.lineno)
+    items = sorted(classes, key=key) + sorted(funcs, key=key) + sorted(consts, key=key)
     return Module(path, docstring(tree, brief), items, hidden)
 
 
@@ -302,14 +378,10 @@ def doc_block(lines: list[str], indent: str) -> list[str]:
 
 
 def item_text(it: Item, indent: str = "") -> list[str]:
-    out = comment_block(it.comments, indent) if it.kind in ("class", "def") else []
-    if it.kind == "field" or it.kind == "const":
-        lead = [c for c in it.comments[:-1]] if it.comments else []
-        out += comment_block(lead, indent)
-        tail = f"  # {it.comments[-1]}" if it.comments else ""
-        return out + [indent + it.text[0] + tail]
-    head = it.text[:-1]
-    out += [indent + h for h in head]
+    out = comment_block(it.lead, indent)
+    if it.kind in ("field", "attr", "const"):
+        return out + [indent + it.text[0] + (f"  # {it.tail}" if it.tail else "")]
+    out += [indent + h for h in it.text[:-1]]
     sig = it.text[-1] + ":"
     if it.kind == "def":
         body = doc_block(it.doc, indent + "    ")
@@ -347,10 +419,17 @@ def count(mods: list[Module]) -> dict:
             if it.kind == "class":
                 c["classes"] += 1
                 for mem in it.members:
-                    c["methods" if mem.kind == "def" else "fields"] += 1 if mem.kind in ("def", "field") else 0
+                    if mem.kind == "def":
+                        c["methods"] += 1
+                    elif mem.kind in ("field", "attr"):
+                        c["fields"] += 1
             elif it.kind == "def":
                 c["functions"] += 1
     return c
+
+
+def anchor(path: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", path.lower()).strip("-")
 
 
 def render_md(mods: list[Module], title: str, src_link: str | None) -> str:
@@ -364,22 +443,19 @@ def render_md(mods: list[Module], title: str, src_link: str | None) -> str:
     out.append("")
     for m in mods:
         link = f" ([source]({src_link}{m.path}))" if src_link is not None else ""
-        out += [f"## `{m.path}`{link}", "", "```python", *module_text(m), "```", ""]
+        # An explicit anchor, so the contents links work whatever slug the renderer gives the heading.
+        out += [f'<a id="{anchor(m.path)}"></a>', "", f"## `{m.path}`{link}", "", "```python", *module_text(m), "```", ""]
     out += ["## Index", ""]
     idx = sorted({(it.name, m.path) for m in mods for it in m.items}, key=lambda t: (t[0].lower(), t[1]))
     out += [f"- `{n}`: [`{p}`](#{anchor(p)})" for n, p in idx]
     return "\n".join(out) + "\n"
 
 
-def anchor(path: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", path.lower()).strip("-")
-
-
 # ---------------------------------------------------------------- html rendering
 
 CSS = """
-:root{--bg:#fff;--fg:#1f1e1c;--mut:#6b6862;--line:#e4e1db;--side:#f7f6f2;--kw:#8a3ffc;--nm:#0f62fe;--cm:#5f7a3a;--st:#a2191f}
-@media(prefers-color-scheme:dark){:root{--bg:#191817;--fg:#ecebe8;--mut:#a19d96;--line:#3a3835;--side:#211f1e;--kw:#be95ff;--nm:#78a9ff;--cm:#a7c080;--st:#ff8389}}
+:root{--bg:#fff;--fg:#1f1e1c;--mut:#6b6862;--line:#e4e1db;--side:#f7f6f2;--kw:#8a3ffc;--nm:#0f62fe;--cm:#5f7a3a}
+@media(prefers-color-scheme:dark){:root{--bg:#191817;--fg:#ecebe8;--mut:#a19d96;--line:#3a3835;--side:#211f1e;--kw:#be95ff;--nm:#78a9ff;--cm:#a7c080}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,system-ui,sans-serif}
 nav{position:fixed;top:0;left:0;bottom:0;width:300px;overflow:auto;background:var(--side);border-right:1px solid var(--line);padding:12px 10px;font-size:12.5px}
 nav a{color:var(--fg);text-decoration:none;display:block;padding:1px 4px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -387,13 +463,26 @@ nav a:hover{background:var(--line)}nav .m{font-weight:600;margin-top:6px}nav .i{
 main{margin-left:300px;padding:16px 24px;max-width:1100px}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:22px 0 6px;border-top:1px solid var(--line);padding-top:12px}
 h2 a.src{font-weight:400;font-size:12px;color:var(--mut);margin-left:8px}.sum{color:var(--mut);margin:0 0 10px}
 pre{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;margin:0}
-.k{color:var(--kw)}.n{color:var(--nm);font-weight:600}.c{color:var(--cm)}.d{color:var(--cm)}.c{color:var(--mut)}
+.k{color:var(--kw)}.n{color:var(--nm);font-weight:600}.c{color:var(--mut)}.d{color:var(--cm)}
 a.t{color:inherit;text-decoration:underline dotted}a.ln{color:var(--mut);font-size:11px;text-decoration:none;margin-left:6px}
 @media(max-width:800px){nav{position:static;width:auto;border:0}main{margin-left:0}}
 """
 
 
-def html_lines(m: Module, names: dict[str, str], src_link: str | None) -> str:
+class Ids:
+    """Unique HTML ids: a repeated name (an overload, a property's setter, a definition in both
+    branches of an if) gets a -2, -3 ... suffix in document order."""
+    def __init__(self) -> None:
+        self.seen: dict[str, int] = {}
+        self.first: dict[str, str] = {}
+
+    def __call__(self, qual: str) -> str:
+        n = self.seen.get(qual, 0) + 1
+        self.seen[qual] = n
+        return qual if n == 1 else f"{qual}-{n}"
+
+
+def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids) -> str:
     """Render one module's declarations with anchors on every declaration and links on known type names."""
     out: list[str] = []
 
@@ -406,20 +495,20 @@ def html_lines(m: Module, names: dict[str, str], src_link: str | None) -> str:
         return re.sub(r"\b[A-Z][A-Za-z0-9_]+\b", sub, s)
 
     def emit(it: Item, indent: str) -> None:
-        for c in (it.comments if it.kind in ("class", "def") else it.comments[:-1]):
+        for c in it.lead:
             out.append(f'{indent}<span class="c"># {html.escape(c)}</span>')
         for h in it.text[:-1]:
             out.append(f'{indent}<span class="k">{html.escape(h)}</span>')
         raw = it.text[-1]
-        kw = re.match(r"^(async def |def |class )?", raw).group(0)
+        kw = re.match(r"^(async def |def |class |self\.)?", raw).group(0)
         rest = raw[len(kw):]
-        assert rest.startswith(it.name), (raw, it.name)
         tail = link_types(html.escape(rest[len(it.name):]))
-        sig = (f'<span class="k">{kw}</span>' if kw else "") + f'<span class="n" id="{html.escape(it.qual)}">{html.escape(it.name)}</span>' + tail
+        kw_html = f'<span class="k">{html.escape(kw)}</span>' if kw else ""
+        sig = kw_html + f'<span class="n" id="{html.escape(ids(it.qual))}">{html.escape(it.name)}</span>' + tail
         ln = f'<a class="ln" href="{src_link}{m.path}#L{it.lineno}">{m.path.rsplit("/", 1)[-1]}:{it.lineno}</a>' if src_link is not None else ""
-        if it.kind in ("field", "const"):
-            tail = f'  <span class="c"># {html.escape(it.comments[-1])}</span>' if it.comments else ""
-            out.append(f"{indent}{sig}{tail}{ln}")
+        if it.kind in ("field", "attr", "const"):
+            tc = f'  <span class="c"># {html.escape(it.tail)}</span>' if it.tail else ""
+            out.append(f"{indent}{sig}{tc}{ln}")
             return
         out.append(f"{indent}{sig}:{' ...' if it.kind == 'def' and not it.doc else ''}{ln}")
         for d in doc_block(it.doc, indent + "    "):
@@ -456,13 +545,16 @@ def render_html(mods: list[Module], title: str, src_link: str | None) -> str:
     nav = []
     for m in mods:
         nav.append(f'<a class="m" href="#{anchor(m.path)}">{html.escape(m.path)}</a>')
+        listed = set()
         for it in m.items:
-            if it.kind in ("class", "def"):
-                nav.append(f'<a class="i" href="#{it.qual}">{"class " if it.kind == "class" else ""}{html.escape(it.name)}</a>')
+            if it.kind in ("class", "def") and it.qual not in listed:
+                listed.add(it.qual)
+                nav.append(f'<a class="i" href="#{html.escape(it.qual)}">{"class " if it.kind == "class" else ""}{html.escape(it.name)}</a>')
+    ids = Ids()
     body = []
     for m in mods:
         src = f'<a class="src" href="{src_link}{m.path}">source</a>' if src_link is not None else ""
-        body.append(f'<h2 id="{anchor(m.path)}">{html.escape(m.path)}{src}</h2>{html_lines(m, names, src_link)}')
+        body.append(f'<h2 id="{anchor(m.path)}">{html.escape(m.path)}{src}</h2>{html_lines(m, names, src_link, ids)}')
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title><style>{CSS}</style></head><body>
 <nav><b>{html.escape(title)}</b>{''.join(nav)}</nav>

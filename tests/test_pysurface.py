@@ -226,3 +226,112 @@ def test_module_entry_point(tmp_path):
                        capture_output=True, text=True, env={"PYTHONPATH": str(Path(__file__).parents[1] / "src")})
     assert r.returncode == 0, r.stderr
     assert re.search(r"\d+ modules in [\d.]+ s", r.stderr)
+
+
+PROBE = textwrap.dedent('''
+    import abc
+    import sys
+    import typing
+    from typing import TYPE_CHECKING
+
+    # leading only
+    LEVEL = 3
+
+    # above
+    BOTH = 4  # tail
+
+
+    class C:
+        # leading only
+        x: int = 0
+        y: int = 1  # tail only
+        # above y2
+        y2: int = 2  # tail y2
+
+        def __init__(self, name: str):
+            # where the name goes
+            self.name = name
+            self._cache: dict = {}  # filled lazily
+            self.name = name.upper()
+
+        @abc.abstractmethod
+        def run(self) -> None: ...
+
+        @property
+        def size(self) -> int: ...
+
+        @size.setter
+        def size(self, v: int) -> None: ...
+
+
+    @typing.overload
+    def g(x: int) -> int: ...
+    @typing.overload
+    def g(x: str) -> str: ...
+    def g(x): return x
+
+
+    if TYPE_CHECKING:
+        def only_for_types() -> None: ...
+
+    try:
+        def shim() -> int: ...
+    except ImportError:
+        def shim() -> int: ...
+''')
+
+
+def probe_text():
+    return "\n".join(module_text(parse_module("pkg/probe.py", PROBE, False, False)))
+
+
+def test_leading_comment_stays_above_and_is_never_moved_to_the_tail():
+    out = probe_text()
+    assert "    # leading only\n    x: int = 0\n" in out
+    assert "x: int = 0  #" not in out
+    assert "    y: int = 1  # tail only" in out
+    assert "    # above y2\n    y2: int = 2  # tail y2" in out
+    assert out.endswith("# leading only\nLEVEL = 3") and "LEVEL = 3  #" not in out
+    assert "# above\nBOTH = 4  # tail" in out
+
+
+def test_dotted_decorators_are_kept():
+    out = probe_text()
+    assert "    @abc.abstractmethod\n    def run(self) -> None: ..." in out
+    assert out.count("@typing.overload\ndef g(") == 2
+    assert "@size.setter" in out
+
+
+def test_definitions_inside_if_and_try_blocks_are_shown_with_their_context():
+    out = probe_text()
+    assert "# in: if TYPE_CHECKING\ndef only_for_types() -> None: ..." in out
+    assert "# in: try\ndef shim() -> int: ..." in out
+    assert "# in: except ImportError\ndef shim() -> int: ..." in out
+
+
+def test_instance_attributes_from_init():
+    out = probe_text()
+    assert "    # where the name goes\n    self.name = name\n" in out
+    assert out.count("self.name") == 1                      # first assignment only
+    assert "    # private\n" in out and "self._cache: dict = {}  # filled lazily" in out
+
+
+def test_html_ids_are_unique():
+    m = parse_module("pkg/probe.py", PROBE, False, False)
+    html = render_html([m], "t", None)
+    ids = re.findall(r'id="([^"]+)"', html)
+    assert len(ids) == len(set(ids))
+    assert 'id="pkg.probe.g-2"' in html and 'id="pkg.probe.C.size-2"' in html
+
+
+def test_markdown_has_explicit_anchors_for_contents_links():
+    m = parse_module("pkg/probe.py", PROBE, False, False)
+    md = render_md([m], "t", None)
+    assert '<a id="pkg-probe-py"></a>' in md
+    assert "(#pkg-probe-py)" in md
+
+
+def test_css_defines_each_class_once():
+    from pysurface.core import CSS
+    rules = re.findall(r"(?<![\w-])\.([a-z])\{", CSS)
+    assert len(rules) == len(set(rules))
