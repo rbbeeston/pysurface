@@ -46,6 +46,13 @@ import time
 import tokenize
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Iterator, Optional, Union
+
+FuncDef = Union[ast.FunctionDef, ast.AsyncFunctionDef]
+Decorated = Union[ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef]
+Documented = Union[ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef]
+Comments = dict[int, str]          # line number -> comment text
+CallRef = tuple[str, ...]          # ("name", n) or ("attr", base, attr): a call as written, before resolution
 
 MAXV = 60
 __version__ = "0.1.0"
@@ -131,6 +138,10 @@ class Item:
     doc: list[str] = field(default_factory=list)
     members: list["Item"] = field(default_factory=list)
     private: bool = False
+    refs: list[CallRef] = field(default_factory=list)       # calls as written (functions and methods)
+    calls: list[str] = field(default_factory=list)          # resolved: quals of package functions it calls
+    called_by: list[str] = field(default_factory=list)      # resolved: quals of package functions that call it
+    owner: Optional[str] = None                             # the enclosing class's qual, for methods
 
 
 @dataclass
@@ -140,9 +151,13 @@ class Module:
     items: list[Item]
     hidden: int = 0
     error: str = ""
+    qual: str = ""                                          # dotted module name from its path
+    unlisted: list[Item] = field(default_factory=list)      # private names left out of the listing, kept for calls
+    imports: dict[str, tuple[str, Optional[str]]] = field(default_factory=dict)
+    # local name -> (module as written, name in it or None for a module import)
 
 
-def comment_map(src: str) -> tuple[dict[int, str], set[int]]:
+def comment_map(src: str) -> tuple[Comments, set[int]]:
     """line -> comment text; and the set of lines that hold only a comment."""
     comments: dict[int, str] = {}
     code_lines: set[int] = set()
@@ -160,7 +175,7 @@ def comment_map(src: str) -> tuple[dict[int, str], set[int]]:
     return comments, only
 
 
-def leading_comments(first_line: int, comments: dict[int, str], only: set[int]) -> list[str]:
+def leading_comments(first_line: int, comments: Comments, only: set[int]) -> list[str]:
     out = []
     ln = first_line - 1
     while ln in only:
@@ -171,7 +186,7 @@ def leading_comments(first_line: int, comments: dict[int, str], only: set[int]) 
     return [c for c in reversed(out) if c]
 
 
-def trailing_comment(node, comments: dict[int, str], only: set[int]) -> str | None:
+def trailing_comment(node: ast.stmt, comments: Comments, only: set[int]) -> str | None:
     """The comment at the end of the line where the statement ends, if that line also holds code."""
     ln = getattr(node, "end_lineno", None) or node.lineno
     if ln in comments and ln not in only:
@@ -179,12 +194,12 @@ def trailing_comment(node, comments: dict[int, str], only: set[int]) -> str | No
     return None
 
 
-def short(node) -> str:
+def short(node: ast.AST) -> str:
     s = ast.unparse(node)
     return s if len(s) <= MAXV else "..."
 
 
-def docstring(node, brief: bool) -> list[str]:
+def docstring(node: Documented, brief: bool) -> list[str]:
     d = ast.get_docstring(node)
     if not d:
         return []
@@ -195,7 +210,7 @@ def docstring(node, brief: bool) -> list[str]:
     return d.splitlines()
 
 
-def args_of(fn) -> str:
+def args_of(fn: FuncDef) -> str:
     a = fn.args
     parts: list[str] = []
     pos = a.posonlyargs + a.args
@@ -229,7 +244,7 @@ KEEP_DECOS = {"staticmethod", "classmethod", "property", "abstractmethod", "abst
               "singledispatchmethod", "setter", "getter", "deleter"}
 
 
-def deco_lines(node) -> list[str]:
+def deco_lines(node: Decorated) -> list[str]:
     out = []
     for d in node.decorator_list:
         s = ast.unparse(d)
@@ -239,20 +254,38 @@ def deco_lines(node) -> list[str]:
     return out
 
 
-def first_line(node) -> int:
+def first_line(node: Decorated) -> int:
     return min([node.lineno] + [d.lineno for d in getattr(node, "decorator_list", [])])
 
 
-def make_def(fn, qual, comments, only, brief, context=None) -> Item:
+def make_def(fn: FuncDef, qual: str, comments: Comments, only: set[int], brief: bool,
+             context: str | None = None, owner: str | None = None) -> Item:
     kw = "async def" if isinstance(fn, ast.AsyncFunctionDef) else "def"
     ret = " -> " + ast.unparse(fn.returns) if fn.returns else ""
     text = deco_lines(fn) + [f"{kw} {fn.name}({args_of(fn)}){ret}"]
     lead = leading_comments(first_line(fn), comments, only) + ([context] if context else [])
     return Item("def", fn.name, qual, fn.lineno, text, lead, None,
-                docstring(fn, brief), private=fn.name.startswith("_") and not fn.name.endswith("__"))
+                docstring(fn, brief), private=fn.name.startswith("_") and not fn.name.endswith("__"),
+                refs=call_refs(fn), owner=owner)
 
 
-def instance_attributes(cls, known: set[str], qual: str, comments, only) -> list[Item]:
+def call_refs(fn: FuncDef) -> list[CallRef]:
+    """The calls a function makes, as written, in source order, each once: f(), x.f(), self.f()."""
+    out: list[CallRef] = []
+    calls = sorted((n for n in ast.walk(fn) if isinstance(n, ast.Call)), key=lambda n: (n.lineno, n.col_offset))
+    for c in calls:
+        f = c.func
+        ref: CallRef | None = None
+        if isinstance(f, ast.Name):
+            ref = ("name", f.id)
+        elif isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name):
+            ref = ("attr", f.value.id, f.attr)
+        if ref and ref not in out:
+            out.append(ref)
+    return out
+
+
+def instance_attributes(cls: ast.ClassDef, known: set[str], qual: str, comments: Comments, only: set[int]) -> list[Item]:
     """Attributes assigned as self.x in __init__ (or __post_init__), in first-assignment order."""
     out: list[Item] = []
     seen = set(known)
@@ -276,7 +309,8 @@ def instance_attributes(cls, known: set[str], qual: str, comments, only) -> list
     return out
 
 
-def make_class(cls, mod_qual, comments, only, brief, context=None) -> Item:
+def make_class(cls: ast.ClassDef, mod_qual: str, comments: Comments, only: set[int], brief: bool,
+               context: str | None = None) -> Item:
     bases = ", ".join(ast.unparse(b) for b in cls.bases + list(cls.keywords))
     qual = f"{mod_qual}.{cls.name}"
     lead = leading_comments(first_line(cls), comments, only) + ([context] if context else [])
@@ -297,7 +331,7 @@ def make_class(cls, mod_qual, comments, only, brief, context=None) -> Item:
                                leading_comments(node.lineno, comments, only), trailing_comment(node, comments, only),
                                private=n.startswith("_")))
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            methods.append(make_def(node, f"{qual}.{node.name}", comments, only, brief))
+            methods.append(make_def(node, f"{qual}.{node.name}", comments, only, brief, owner=qual))
         elif isinstance(node, ast.ClassDef):
             inner.append(make_class(node, qual, comments, only, brief))
     attrs = instance_attributes(cls, {f.name for f in fields}, qual, comments, only)
@@ -309,7 +343,7 @@ def make_class(cls, mod_qual, comments, only, brief, context=None) -> Item:
     return item
 
 
-def module_statements(body, context=None):
+def module_statements(body: list[ast.stmt], context: str | None = None) -> Iterator[tuple[ast.stmt, str | None]]:
     """Top-level statements, descending into module-level if/try blocks. Yields (node, context),
     where context names the block a definition sits in, such as "in: if TYPE_CHECKING"."""
     for node in body:
@@ -336,18 +370,21 @@ def parse_module(path: str, src: str, private: bool, brief: bool) -> Module:
         return Module(path, [], [], error=f"could not parse: {e.msg} (line {e.lineno})")
     comments, only = comment_map(src)
     classes, funcs, consts = [], [], []
+    unlisted: list[Item] = []
     hidden = 0
     for node, ctx in module_statements(tree.body):
         if isinstance(node, ast.ClassDef):
             c = make_class(node, mod_qual, comments, only, brief, ctx)
             if c.private and not private:
                 hidden += 1
+                unlisted.append(c)
             else:
                 classes.append(c)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             f = make_def(node, f"{mod_qual}.{node.name}", comments, only, brief, ctx)
             if f.private and not private:
                 hidden += 1
+                unlisted.append(f)
             else:
                 funcs.append(f)
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -360,7 +397,124 @@ def parse_module(path: str, src: str, private: bool, brief: bool) -> Module:
                                    trailing_comment(node, comments, only)))
     key = lambda i: (i.name, i.lineno)
     items = sorted(classes, key=key) + sorted(funcs, key=key) + sorted(consts, key=key)
-    return Module(path, docstring(tree, brief), items, hidden)
+    return Module(path, docstring(tree, brief), items, hidden, qual=mod_qual, imports=imports_of(tree, mod_qual),
+                  unlisted=unlisted)
+
+
+def imports_of(tree: ast.Module, mod_qual: str) -> dict[str, tuple[str, str | None]]:
+    """Every import in the module, including ones inside functions: local name -> (module, name in
+    it, or None). Relative imports are made absolute against this module's own dotted name."""
+    out: dict[str, tuple[str, str | None]] = {}
+    package = mod_qual.rsplit(".", 1)[0] if "." in mod_qual else ""
+    if mod_qual.endswith("__init__"):
+        package = mod_qual.rsplit(".", 1)[0]
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                out[a.asname or a.name.split(".")[0]] = (a.name if a.asname else a.name.split(".")[0], None)
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:
+                parts = package.split(".") if package else []
+                parts = parts[:len(parts) - (node.level - 1)] if node.level > 1 else parts
+                base = ".".join(p for p in parts + ([base] if base else []) if p)
+            for a in node.names:
+                if a.name != "*":
+                    out[a.asname or a.name] = (base, a.name)
+    return out
+
+
+def link_calls(mods: list[Module]) -> None:
+    """Resolve each function's calls to functions, methods and classes in this package, by name.
+    Static and approximate: a call through a variable, an argument or an unknown object is left out."""
+    index: dict[str, Item] = {}
+    by_module: dict[str, Module] = {}
+    for m in mods:
+        by_module[m.qual] = m
+        if m.qual.endswith(".__init__"):
+            by_module[m.qual[: -len(".__init__")]] = m
+        for it in m.items + m.unlisted:
+            index[it.qual] = it
+            for mem in it.members:
+                if mem.kind in ("def", "class"):
+                    index[mem.qual] = mem
+
+    def module_named(name: str) -> Module | None:
+        """A scanned module by dotted name. Imports may carry the package's own name in front
+        (tomd.lib.pdf.table for lib.pdf.table), so a unique suffix match also counts."""
+        if name in by_module:
+            return by_module[name]
+        hits = {by_module[q].qual for q in by_module if name.endswith("." + q)}
+        return by_module[hits.pop()] if len(hits) == 1 else None
+
+    def resolve_name(m: Module, n: str) -> str | None:
+        if f"{m.qual}.{n}" in index:
+            return f"{m.qual}.{n}"
+        if n in m.imports:
+            mod, name = m.imports[n]
+            target = module_named(mod) if name else None
+            if target and f"{target.qual}.{name}" in index:
+                return f"{target.qual}.{name}"
+        return None
+
+    def resolve(m: Module, it: Item, ref: CallRef) -> str | None:
+        if ref[0] == "name":
+            return resolve_name(m, ref[1])
+        _, base, attr = ref
+        if base in ("self", "cls") and it.owner:
+            q = f"{it.owner}.{attr}"
+            return q if q in index else None
+        cls = resolve_name(m, base)
+        if cls and index[cls].kind == "class":
+            q = f"{cls}.{attr}"
+            return q if q in index else None
+        if base in m.imports:
+            mod, name = m.imports[base]
+            target = module_named(f"{mod}.{name}" if name else mod)
+            if target and f"{target.qual}.{attr}" in index:
+                return f"{target.qual}.{attr}"
+        return None
+
+    def walk(m: Module, items: list[Item]) -> None:
+        for it in items:
+            if it.kind == "def":
+                for ref in it.refs:
+                    q = resolve(m, it, ref)
+                    if q and q != it.qual and q not in it.calls:
+                        it.calls.append(q)
+                        index[q].called_by.append(it.qual)
+            walk(m, it.members)
+
+    for m in mods:
+        walk(m, m.items + m.unlisted)
+    for it in index.values():
+        it.called_by = sorted(set(it.called_by))
+
+
+def short_qual(q: str, here: str) -> str:
+    """How a call target is written in a report: Class.method or name inside the same module,
+    module.name (last path component) elsewhere."""
+    if q.startswith(here + "."):
+        return q[len(here) + 1:]
+    mod_and_rest = q.split(".")
+    for i in range(len(mod_and_rest) - 1, 0, -1):
+        head = ".".join(mod_and_rest[:i])
+        if head and not head.split(".")[-1][:1].isupper():
+            name = head.split(".")[-1]
+            if name == "__init__":
+                name = head.split(".")[-2] if len(head.split(".")) > 1 else name
+            return name + "." + ".".join(mod_and_rest[i:])
+    return q
+
+
+def call_lines(it: Item, here: str, limit: int = 12) -> list[str]:
+    out = []
+    for label, qs in (("calls", it.calls), ("called by", it.called_by)):
+        if qs:
+            names = [short_qual(q, here) for q in qs]
+            more = f", +{len(names) - limit} more" if len(names) > limit else ""
+            out.append(f"{label}: {', '.join(names[:limit])}{more}")
+    return out
 
 
 # ---------------------------------------------------------------- text rendering
@@ -377,14 +531,14 @@ def doc_block(lines: list[str], indent: str) -> list[str]:
     return [f'{indent}"""{lines[0]}'] + [f"{indent}{l}" if l else "" for l in lines[1:]] + [f'{indent}"""']
 
 
-def item_text(it: Item, indent: str = "") -> list[str]:
+def item_text(it: Item, indent: str = "", here: str = "", calls: bool = True) -> list[str]:
     out = comment_block(it.lead, indent)
     if it.kind in ("field", "attr", "const"):
         return out + [indent + it.text[0] + (f"  # {it.tail}" if it.tail else "")]
     out += [indent + h for h in it.text[:-1]]
     sig = it.text[-1] + ":"
     if it.kind == "def":
-        body = doc_block(it.doc, indent + "    ")
+        body = doc_block(it.doc, indent + "    ") + (comment_block(call_lines(it, here), indent + "    ") if calls else [])
         return out + [indent + sig] + body if body else out + [indent + sig + " ..."]
     out.append(indent + sig)
     out += doc_block(it.doc, indent + "    ")
@@ -393,26 +547,26 @@ def item_text(it: Item, indent: str = "") -> list[str]:
         if m.private and not priv_started:
             out.append(indent + "    # private")
             priv_started = True
-        out += item_text(m, indent + "    ")
+        out += item_text(m, indent + "    ", here, calls)
     if not it.members and not it.doc:
         out.append(indent + "    ...")
     return out
 
 
-def module_text(m: Module) -> list[str]:
+def module_text(m: Module, calls: bool = True) -> list[str]:
     if m.error:
         return [f"# {m.error}"]
     out = doc_block(m.doc, "")
     for it in m.items:
         if out:
             out.append("")
-        out += item_text(it)
+        out += item_text(it, "", m.qual, calls)
     if m.hidden:
         out += ["", f"# + {m.hidden} private module-level name{'s' if m.hidden != 1 else ''}"]
     return out or ["# no declarations"]
 
 
-def count(mods: list[Module]) -> dict:
+def count(mods: list[Module]) -> dict[str, int]:
     c = {"modules": len(mods), "classes": 0, "functions": 0, "methods": 0, "fields": 0}
     for m in mods:
         for it in m.items:
@@ -482,12 +636,12 @@ class Ids:
         return qual if n == 1 else f"{qual}-{n}"
 
 
-def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids) -> str:
+def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids, listed: set[str]) -> str:
     """Render one module's declarations with anchors on every declaration and links on known type names."""
     out: list[str] = []
 
     def link_types(s: str) -> str:
-        def sub(mo):
+        def sub(mo: "re.Match[str]") -> str:
             w = mo.group(0)
             if w in names:
                 return f'<a class="t" href="#{names[w]}">{w}</a>'
@@ -510,9 +664,11 @@ def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids)
             tc = f'  <span class="c"># {html.escape(it.tail)}</span>' if it.tail else ""
             out.append(f"{indent}{sig}{tc}{ln}")
             return
-        out.append(f"{indent}{sig}:{' ...' if it.kind == 'def' and not it.doc else ''}{ln}")
+        clines = call_html(it, indent + "    ") if it.kind == "def" else []
+        out.append(f"{indent}{sig}:{' ...' if it.kind == 'def' and not it.doc and not clines else ''}{ln}")
         for d in doc_block(it.doc, indent + "    "):
             out.append(f'<span class="d">{html.escape(d)}</span>')
+        out.extend(clines)
         if it.kind == "class":
             priv = False
             for mem in it.members:
@@ -522,6 +678,16 @@ def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids)
                 emit(mem, indent + "    ")
             if not it.members and not it.doc:
                 out.append(f"{indent}    ...")
+
+    def call_html(it: Item, indent: str, limit: int = 12) -> list[str]:
+        res = []
+        for label, qs in (("calls", it.calls), ("called by", it.called_by)):
+            if qs:
+                links = [f'<a class="t" href="#{html.escape(q)}">{html.escape(short_qual(q, m.qual))}</a>' if q in listed
+                         else html.escape(short_qual(q, m.qual)) for q in qs[:limit]]
+                more = f", +{len(qs) - limit} more" if len(qs) > limit else ""
+                res.append(f'{indent}<span class="c"># {label}: </span>{", ".join(links)}<span class="c">{more}</span>')
+        return res
 
     if m.error:
         return f"<pre>{html.escape(m.error)}</pre>"
@@ -551,10 +717,11 @@ def render_html(mods: list[Module], title: str, src_link: str | None) -> str:
                 listed.add(it.qual)
                 nav.append(f'<a class="i" href="#{html.escape(it.qual)}">{"class " if it.kind == "class" else ""}{html.escape(it.name)}</a>')
     ids = Ids()
+    listed = {it.qual for m in mods for it in m.items} | {mem.qual for m in mods for it in m.items for mem in it.members}
     body = []
     for m in mods:
         src = f'<a class="src" href="{src_link}{m.path}">source</a>' if src_link is not None else ""
-        body.append(f'<h2 id="{anchor(m.path)}">{html.escape(m.path)}{src}</h2>{html_lines(m, names, src_link, ids)}')
+        body.append(f'<h2 id="{anchor(m.path)}">{html.escape(m.path)}{src}</h2>{html_lines(m, names, src_link, ids, listed)}')
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title><style>{CSS}</style></head><body>
 <nav><b>{html.escape(title)}</b>{''.join(nav)}</nav>
@@ -566,8 +733,8 @@ def render_html(mods: list[Module], title: str, src_link: str | None) -> str:
 # ---------------------------------------------------------------- diff
 
 def render_diff(old: list[Module], new: list[Module], title: str) -> str:
-    a = {m.path: module_text(m) for m in old}
-    b = {m.path: module_text(m) for m in new}
+    a = {m.path: module_text(m, calls=False) for m in old}
+    b = {m.path: module_text(m, calls=False) for m in new}
     added = [p for p in b if p not in a]
     removed = [p for p in a if p not in b]
     changed = [p for p in b if p in a and a[p] != b[p]]
@@ -589,12 +756,14 @@ def render_diff(old: list[Module], new: list[Module], title: str) -> str:
 
 # ---------------------------------------------------------------- main
 
-def load(args, ref: str | None) -> list[Module]:
+def load(args: argparse.Namespace, ref: str | None) -> list[Module]:
     skip = tuple(args.exclude or ()) + (() if args.include_tests else TEST_GLOBS)
     srcs = sources_from_git(args.path, ref, args.root, skip) if ref else sources_from_dir(args.path, skip)
     if not srcs:
         raise InputError("no Python files found")
     mods = [parse_module(p, s, args.private, args.brief) for p, s in srcs.items()]
+    if not getattr(args, "no_calls", False):
+        link_calls(mods)
     for m in mods:
         if m.error:
             print(f"warning: {m.path}: {m.error}", file=sys.stderr)
@@ -623,6 +792,7 @@ def run(argv: list[str] | None) -> int:
     ap.add_argument("--source-base", help="URL or relative path that source paths are appended to for links")
     ap.add_argument("--exclude", action="append", metavar="GLOB", help="leave out paths matching GLOB (repeatable)")
     ap.add_argument("--include-tests", action="store_true", help="keep test files (left out by default)")
+    ap.add_argument("--no-calls", action="store_true", help="leave out the calls / called-by lines")
     ap.add_argument("--version", action="version", version=f"pysurface {__version__}")
     a = ap.parse_args(argv)
     t0 = time.perf_counter()

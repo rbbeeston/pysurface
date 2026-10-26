@@ -350,3 +350,53 @@ def test_own_report_is_current():
     for ext in ("md", "html"):
         assert (out / f"pysurface.api.{ext}").read_text() == (root / "doc" / "api" / f"pysurface.api.{ext}").read_text(), \
             "regenerate doc/api (see README)"
+
+
+def test_calls_and_called_by(tmp_path, capsys):
+    pkg = tmp_path / "src" / "pkg"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("")
+    (pkg / "util.py").write_text(textwrap.dedent('''
+        def helper(x):
+            return x
+
+        class Box:
+            def open(self):
+                return self.peek()
+
+            def peek(self):
+                return 1
+    '''))
+    (pkg / "main.py").write_text(textwrap.dedent('''
+        from . import util
+        from .util import Box
+
+        def run():
+            b = Box()
+            b.open()                 # a call through a variable: not resolved
+            return util.helper(2) + _inner()
+
+        def _inner():
+            from .util import helper
+            return helper(1)
+    '''))
+    assert main([str(tmp_path / "src"), "-o", str(tmp_path / "o"), "--name", "d", "--no-source-links"]) == 0
+    md = (tmp_path / "o" / "d.api.md").read_text()
+    assert "def run():\n    # calls: util.Box, util.helper, _inner" in md
+    assert "def helper(x):\n    # called by: main._inner, main.run" in md
+    assert "def open(self):\n        # calls: Box.peek" in md
+    assert "# calls: Box.open" not in md                      # b.open() through a variable is not guessed
+    html = (tmp_path / "o" / "d.api.html").read_text()
+    assert '<a class="t" href="#pkg.util.helper">util.helper</a>' in html
+    assert main([str(tmp_path / "src"), "-o", str(tmp_path / "p"), "--name", "d", "--no-calls"]) == 0
+    assert "# calls:" not in (tmp_path / "p" / "d.api.md").read_text()
+
+
+def test_every_function_in_pysurface_is_annotated():
+    import ast as _ast
+    src = (Path(__file__).parents[1] / "src" / "pysurface" / "core.py").read_text()
+    for node in _ast.walk(_ast.parse(src)):
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            args = [a for a in node.args.args + node.args.kwonlyargs if a.arg not in ("self", "cls")]
+            missing = [a.arg for a in args if a.annotation is None]
+            assert not missing and node.returns is not None, f"{node.name} lacks types: {missing or 'return'}"
