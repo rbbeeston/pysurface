@@ -1,12 +1,12 @@
 # pysurface API surface
 
-3 modules, 4 classes, 35 functions, 2 methods, 24 fields.
+3 modules, 4 classes, 39 functions, 2 methods, 25 fields. Typed: 41 of 41 functions and methods (100%).
 
 ## Contents
 
 - [`__init__.py`](#init-py)
 - [`__main__.py`](#main-py)
-- [`core.py`](#core-py): Ids, InputError, Item, Module, anchor, args_of, call_lines, call_refs, comment_block, comment_map, count, deco_lines, ...
+- [`core.py`](#core-py): Ids, InputError, Item, Module, anchor, args_of, call_lines, call_refs, comment_block, comment_map, count, coverage, ...
 
 <a id="init-py"></a>
 
@@ -28,6 +28,8 @@
 
 ## `core.py` ([source](../../src/pysurface/core.py))
 
+Typed: 41 of 41 functions and methods (100%).
+
 ```python
 """pysurface: a compact, navigable report of a Python package's API surface.
 
@@ -47,7 +49,8 @@ no imports of the package, so it runs in a second or two on a large package.
 Options: --private keeps module-level private names (inner private members of a
 class are always kept, under "# private"); --brief keeps only the first paragraph
 of each docstring; --no-source-links drops file:line links, so the output depends
-only on the declarations.
+only on the declarations; --no-calls drops the calls / called-by lines;
+--no-type-marks drops the untyped marks and the typed counts.
 
 Layout rules (after vibelight, a tool that does the same for Rust):
 - one section per module, in path order, opening with the module docstring;
@@ -90,6 +93,7 @@ class Item:
     calls: list[str] = field(default_factory=list)  # resolved: quals of package functions it calls
     called_by: list[str] = field(default_factory=list)  # resolved: quals of package functions that call it
     owner: Optional[str] = None  # the enclosing class's qual, for methods
+    untyped: list[str] = field(default_factory=list)  # parameters without an annotation, and "return" if it has none
 
 @dataclass
 class Module:
@@ -104,14 +108,17 @@ class Module:
 
 def anchor(path: str) -> str:
     # called by: render_html, render_md
+    ...
 
 def args_of(fn: FuncDef) -> str:
     # calls: short
     # called by: make_def
+    ...
 
 def call_lines(it: Item, here: str, limit: int = 12) -> list[str]:
     # calls: short_qual
     # called by: item_text
+    ...
 
 def call_refs(fn: FuncDef) -> list[CallRef]:
     """The calls a function makes, as written, in source order, each once: f(), x.f(), self.f()."""
@@ -119,6 +126,7 @@ def call_refs(fn: FuncDef) -> list[CallRef]:
 
 def comment_block(lines: list[str], indent: str) -> list[str]:
     # called by: item_text
+    ...
 
 def comment_map(src: str) -> tuple[Comments, set[int]]:
     """line -> comment text; and the set of lines that hold only a comment."""
@@ -126,27 +134,42 @@ def comment_map(src: str) -> tuple[Comments, set[int]]:
 
 def count(mods: list[Module]) -> dict[str, int]:
     # called by: render_html, render_md
+    ...
+
+def coverage(m: Module) -> tuple[int, int]:
+    """(fully annotated, all) functions and methods in a module, private and unlisted ones included."""
+    # called by: render_html, render_md, total_coverage
+
+def coverage_text(typed: int, total: int) -> str:
+    """A line such as: Typed: 40 of 42 functions and methods (95%). The percentage rounds down, so 100% means all."""
+    # called by: render_html, render_md
 
 def deco_lines(node: Decorated) -> list[str]:
     # called by: make_class, make_def
+    ...
 
 def doc_block(lines: list[str], indent: str) -> list[str]:
     # called by: html_lines, item_text, module_text
+    ...
 
 def docstring(node: Documented, brief: bool) -> list[str]:
     # called by: make_class, make_def, parse_module
+    ...
 
 def excluded(path: str, globs: tuple[str, ...]) -> bool:
     # called by: sources_from_dir, sources_from_git
+    ...
 
 def first_line(node: Decorated) -> int:
     # called by: make_class, make_def
+    ...
 
 def git(repo: str, *args: str) -> str:
     # calls: InputError
     # called by: sources_from_git
+    ...
 
-def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids, listed: set[str]) -> str:
+def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids, listed: set[str], marks: bool = True) -> str:
     """Render one module's declarations with anchors on every declaration and links on known type names."""
     # calls: doc_block, short_qual
     # called by: render_html
@@ -162,12 +185,14 @@ def instance_attributes(cls: ast.ClassDef, known: set[str], qual: str, comments:
     # calls: short, Item, leading_comments, trailing_comment
     # called by: make_class
 
-def item_text(it: Item, indent: str = '', here: str = '', calls: bool = True) -> list[str]:
-    # calls: comment_block, doc_block, call_lines
+def item_text(it: Item, indent: str = '', here: str = '', calls: bool = True, marks: bool = True) -> list[str]:
+    # calls: comment_block, call_lines, doc_block
     # called by: module_text
+    ...
 
 def leading_comments(first_line: int, comments: Comments, only: set[int]) -> list[str]:
     # called by: instance_attributes, make_class, make_def, parse_module
+    ...
 
 def link_calls(mods: list[Module]) -> None:
     """Resolve each function's calls to functions, methods and classes in this package, by name.
@@ -178,17 +203,21 @@ def link_calls(mods: list[Module]) -> None:
 def load(args: argparse.Namespace, ref: str | None) -> list[Module]:
     # calls: sources_from_git, sources_from_dir, InputError, parse_module, link_calls
     # called by: run
+    ...
 
 def main(argv: list[str] | None = None) -> int:
     # calls: run
+    ...
 
 def make_class(cls: ast.ClassDef, mod_qual: str, comments: Comments, only: set[int], brief: bool, context: str | None = None) -> Item:
     # calls: leading_comments, first_line, Item, deco_lines, docstring, short, trailing_comment, make_def, instance_attributes
     # called by: parse_module
+    ...
 
 def make_def(fn: FuncDef, qual: str, comments: Comments, only: set[int], brief: bool, context: str | None = None, owner: str | None = None) -> Item:
-    # calls: deco_lines, args_of, leading_comments, first_line, Item, docstring, call_refs
+    # calls: deco_lines, args_of, leading_comments, first_line, Item, docstring, call_refs, untyped_of
     # called by: make_class, parse_module
+    ...
 
 def module_statements(body: list[ast.stmt], context: str | None = None) -> Iterator[tuple[ast.stmt, str | None]]:
     """Top-level statements, descending into module-level if/try blocks. Yields (node, context),
@@ -196,32 +225,39 @@ def module_statements(body: list[ast.stmt], context: str | None = None) -> Itera
     """
     # called by: parse_module
 
-def module_text(m: Module, calls: bool = True) -> list[str]:
+def module_text(m: Module, calls: bool = True, marks: bool = True) -> list[str]:
     # calls: doc_block, item_text
     # called by: render_diff, render_md
+    ...
 
 def parse_module(path: str, src: str, private: bool, brief: bool) -> Module:
     # calls: Module, comment_map, module_statements, make_class, make_def, short, Item, leading_comments, trailing_comment, docstring, imports_of
     # called by: load
+    ...
 
 def render_diff(old: list[Module], new: list[Module], title: str) -> str:
     # calls: module_text
     # called by: run
+    ...
 
-def render_html(mods: list[Module], title: str, src_link: str | None) -> str:
-    # calls: count, anchor, Ids, html_lines
+def render_html(mods: list[Module], title: str, src_link: str | None, marks: bool = True) -> str:
+    # calls: count, anchor, coverage_text, total_coverage, Ids, coverage, html_lines
     # called by: run
+    ...
 
-def render_md(mods: list[Module], title: str, src_link: str | None) -> str:
-    # calls: count, anchor, module_text
+def render_md(mods: list[Module], title: str, src_link: str | None, marks: bool = True) -> str:
+    # calls: count, coverage_text, total_coverage, anchor, coverage, module_text
     # called by: run
+    ...
 
 def run(argv: list[str] | None) -> int:
     # calls: render_diff, load, render_md, render_html
     # called by: main
+    ...
 
 def short(node: ast.AST) -> str:
     # called by: args_of, instance_attributes, make_class, parse_module
+    ...
 
 def short_qual(q: str, here: str) -> str:
     """How a call target is written in a report: Class.method or name inside the same module,
@@ -232,15 +268,27 @@ def short_qual(q: str, here: str) -> str:
 def sources_from_dir(path: str, skip: tuple[str, ...]) -> dict[str, str]:
     # calls: InputError, excluded
     # called by: load
+    ...
 
 def sources_from_git(repo: str, ref: str, root: str, skip: tuple[str, ...]) -> dict[str, str]:
     """Every .py file under root at ref, read through one `git cat-file --batch` process."""
     # calls: git, excluded
     # called by: load
 
+def total_coverage(mods: list[Module]) -> tuple[int, int]:
+    # calls: coverage
+    # called by: render_html, render_md
+    ...
+
 def trailing_comment(node: ast.stmt, comments: Comments, only: set[int]) -> str | None:
     """The comment at the end of the line where the statement ends, if that line also holds code."""
     # called by: instance_attributes, make_class, parse_module
+
+def untyped_of(fn: FuncDef, method: bool) -> list[str]:
+    """The parameters with no annotation, in order, then "return" when the return type is missing.
+    A method's self or cls is not counted, nor is __init__'s return.
+    """
+    # called by: make_def
 
 CSS = ...
 
@@ -264,6 +312,8 @@ TEST_GLOBS = ...
 - `comment_block`: [`core.py`](#core-py)
 - `comment_map`: [`core.py`](#core-py)
 - `count`: [`core.py`](#core-py)
+- `coverage`: [`core.py`](#core-py)
+- `coverage_text`: [`core.py`](#core-py)
 - `CSS`: [`core.py`](#core-py)
 - `deco_lines`: [`core.py`](#core-py)
 - `doc_block`: [`core.py`](#core-py)
@@ -300,4 +350,6 @@ TEST_GLOBS = ...
 - `sources_from_dir`: [`core.py`](#core-py)
 - `sources_from_git`: [`core.py`](#core-py)
 - `TEST_GLOBS`: [`core.py`](#core-py)
+- `total_coverage`: [`core.py`](#core-py)
 - `trailing_comment`: [`core.py`](#core-py)
+- `untyped_of`: [`core.py`](#core-py)

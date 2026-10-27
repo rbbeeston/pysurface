@@ -88,7 +88,7 @@ def test_private_names():
     assert "# + 1 private module-level name" in out
     assert "    # private\n    def _check(self) -> bool: ..." in out
     out = text(SAMPLE, private=True)
-    assert "def _helper(): ..." in out and "_SECRET = 3" in out
+    assert "def _helper():\n    # untyped: return\n    ..." in out and "_SECRET = 3" in out
 
 
 def test_order_and_formatting_do_not_change_output():
@@ -382,9 +382,9 @@ def test_calls_and_called_by(tmp_path, capsys):
     '''))
     assert main([str(tmp_path / "src"), "-o", str(tmp_path / "o"), "--name", "d", "--no-source-links"]) == 0
     md = (tmp_path / "o" / "d.api.md").read_text()
-    assert "def run():\n    # calls: util.Box, util.helper, _inner" in md
-    assert "def helper(x):\n    # called by: main._inner, main.run" in md
-    assert "def open(self):\n        # calls: Box.peek" in md
+    assert "def run():\n    # untyped: return\n    # calls: util.Box, util.helper, _inner\n    ..." in md
+    assert "def helper(x):\n    # untyped: x, return\n    # called by: main._inner, main.run\n    ..." in md
+    assert "def open(self):\n        # untyped: return\n        # calls: Box.peek\n        ..." in md
     assert "# calls: Box.open" not in md                      # b.open() through a variable is not guessed
     html = (tmp_path / "o" / "d.api.html").read_text()
     assert '<a class="t" href="#pkg.util.helper">util.helper</a>' in html
@@ -400,3 +400,41 @@ def test_every_function_in_pysurface_is_annotated():
             args = [a for a in node.args.args + node.args.kwonlyargs if a.arg not in ("self", "cls")]
             missing = [a.arg for a in args if a.annotation is None]
             assert not missing and node.returns is not None, f"{node.name} lacks types: {missing or 'return'}"
+
+
+def test_untyped_marks_and_coverage(tmp_path):
+    src = textwrap.dedent('''
+        def plain(x, *rest, key=1, **kw):
+            pass
+
+        def typed(x: int) -> int:
+            return x
+
+        class C:
+            def __init__(self, a: int):
+                pass
+
+            def m(self, a: int) -> None:
+                pass
+
+            @staticmethod
+            def s(a) -> None:
+                pass
+
+            def _p(self, b):
+                """Private, untyped."""
+    ''')
+    m = parse_module("m.py", src, False, False)
+    t = "\n".join(module_text(m))
+    assert "def plain(x, *rest, key=1, **kw):\n    # untyped: x, *rest, key, **kw, return\n    ..." in t
+    assert "def typed(x: int) -> int: ..." in t
+    assert "def __init__(self, a: int): ..." in t           # self and __init__'s return are not counted
+    assert "def s(a) -> None:\n        # untyped: a\n        ..." in t
+    assert '"""Private, untyped."""\n        # untyped: b, return' in t   # a docstring body needs no ...
+    md = render_md([m], "t", None)
+    assert "Typed: 3 of 6 functions and methods (50%)." in md
+    assert "# untyped" not in "\n".join(module_text(m, marks=False))
+    assert "Typed:" not in render_md([m], "t", None, marks=False)
+    html = render_html([m], "t", None)
+    assert '<span class="c u"># untyped: x, *rest, key, **kw, return</span>' in html
+    assert "Typed: 3 of 6" in html

@@ -9,13 +9,13 @@ nav a:hover{background:var(--line)}nav .m{font-weight:600;margin-top:6px}nav .i{
 main{margin-left:300px;padding:16px 24px;max-width:1100px}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:22px 0 6px;border-top:1px solid var(--line);padding-top:12px}
 h2 a.src{font-weight:400;font-size:12px;color:var(--mut);margin-left:8px}.sum{color:var(--mut);margin:0 0 10px}
 pre{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;margin:0}
-.k{color:var(--kw)}.n{color:var(--nm);font-weight:600}.c{color:var(--mut)}.d{color:var(--cm)}
+.k{color:var(--kw)}.n{color:var(--nm);font-weight:600}.c{color:var(--mut)}.d{color:var(--cm)}.u{font-style:italic}
 a.t{color:inherit;text-decoration:underline dotted}a.ln{color:var(--mut);font-size:11px;text-decoration:none;margin-left:6px}
 @media(max-width:800px){nav{position:static;width:auto;border:0}main{margin-left:0}}
 </style></head><body>
-<nav><b>pysurface API surface</b><a class="m" href="#init-py">__init__.py</a><a class="m" href="#main-py">__main__.py</a><a class="m" href="#core-py">core.py</a><a class="i" href="#core.Ids">class Ids</a><a class="i" href="#core.InputError">class InputError</a><a class="i" href="#core.Item">class Item</a><a class="i" href="#core.Module">class Module</a><a class="i" href="#core.anchor">anchor</a><a class="i" href="#core.args_of">args_of</a><a class="i" href="#core.call_lines">call_lines</a><a class="i" href="#core.call_refs">call_refs</a><a class="i" href="#core.comment_block">comment_block</a><a class="i" href="#core.comment_map">comment_map</a><a class="i" href="#core.count">count</a><a class="i" href="#core.deco_lines">deco_lines</a><a class="i" href="#core.doc_block">doc_block</a><a class="i" href="#core.docstring">docstring</a><a class="i" href="#core.excluded">excluded</a><a class="i" href="#core.first_line">first_line</a><a class="i" href="#core.git">git</a><a class="i" href="#core.html_lines">html_lines</a><a class="i" href="#core.imports_of">imports_of</a><a class="i" href="#core.instance_attributes">instance_attributes</a><a class="i" href="#core.item_text">item_text</a><a class="i" href="#core.leading_comments">leading_comments</a><a class="i" href="#core.link_calls">link_calls</a><a class="i" href="#core.load">load</a><a class="i" href="#core.main">main</a><a class="i" href="#core.make_class">make_class</a><a class="i" href="#core.make_def">make_def</a><a class="i" href="#core.module_statements">module_statements</a><a class="i" href="#core.module_text">module_text</a><a class="i" href="#core.parse_module">parse_module</a><a class="i" href="#core.render_diff">render_diff</a><a class="i" href="#core.render_html">render_html</a><a class="i" href="#core.render_md">render_md</a><a class="i" href="#core.run">run</a><a class="i" href="#core.short">short</a><a class="i" href="#core.short_qual">short_qual</a><a class="i" href="#core.sources_from_dir">sources_from_dir</a><a class="i" href="#core.sources_from_git">sources_from_git</a><a class="i" href="#core.trailing_comment">trailing_comment</a></nav>
-<main><h1>pysurface API surface</h1><p class="sum">3 modules, 4 classes, 35 functions, 2 methods, 24 fields. Declarations, docstrings and comments only; no function bodies.</p>
-<h2 id="init-py">__init__.py<a class="src" href="../../src/pysurface/__init__.py">source</a></h2><pre><span class="d">&quot;&quot;&quot;pysurface: a compact, navigable report of a Python package&#x27;s API surface.&quot;&quot;&quot;</span></pre><h2 id="main-py">__main__.py<a class="src" href="../../src/pysurface/__main__.py">source</a></h2><pre></pre><h2 id="core-py">core.py<a class="src" href="../../src/pysurface/core.py">source</a></h2><pre><span class="d">&quot;&quot;&quot;pysurface: a compact, navigable report of a Python package&#x27;s API surface.</span>
+<nav><b>pysurface API surface</b><a class="m" href="#init-py">__init__.py</a><a class="m" href="#main-py">__main__.py</a><a class="m" href="#core-py">core.py</a><a class="i" href="#core.Ids">class Ids</a><a class="i" href="#core.InputError">class InputError</a><a class="i" href="#core.Item">class Item</a><a class="i" href="#core.Module">class Module</a><a class="i" href="#core.anchor">anchor</a><a class="i" href="#core.args_of">args_of</a><a class="i" href="#core.call_lines">call_lines</a><a class="i" href="#core.call_refs">call_refs</a><a class="i" href="#core.comment_block">comment_block</a><a class="i" href="#core.comment_map">comment_map</a><a class="i" href="#core.count">count</a><a class="i" href="#core.coverage">coverage</a><a class="i" href="#core.coverage_text">coverage_text</a><a class="i" href="#core.deco_lines">deco_lines</a><a class="i" href="#core.doc_block">doc_block</a><a class="i" href="#core.docstring">docstring</a><a class="i" href="#core.excluded">excluded</a><a class="i" href="#core.first_line">first_line</a><a class="i" href="#core.git">git</a><a class="i" href="#core.html_lines">html_lines</a><a class="i" href="#core.imports_of">imports_of</a><a class="i" href="#core.instance_attributes">instance_attributes</a><a class="i" href="#core.item_text">item_text</a><a class="i" href="#core.leading_comments">leading_comments</a><a class="i" href="#core.link_calls">link_calls</a><a class="i" href="#core.load">load</a><a class="i" href="#core.main">main</a><a class="i" href="#core.make_class">make_class</a><a class="i" href="#core.make_def">make_def</a><a class="i" href="#core.module_statements">module_statements</a><a class="i" href="#core.module_text">module_text</a><a class="i" href="#core.parse_module">parse_module</a><a class="i" href="#core.render_diff">render_diff</a><a class="i" href="#core.render_html">render_html</a><a class="i" href="#core.render_md">render_md</a><a class="i" href="#core.run">run</a><a class="i" href="#core.short">short</a><a class="i" href="#core.short_qual">short_qual</a><a class="i" href="#core.sources_from_dir">sources_from_dir</a><a class="i" href="#core.sources_from_git">sources_from_git</a><a class="i" href="#core.total_coverage">total_coverage</a><a class="i" href="#core.trailing_comment">trailing_comment</a><a class="i" href="#core.untyped_of">untyped_of</a></nav>
+<main><h1>pysurface API surface</h1><p class="sum">3 modules, 4 classes, 39 functions, 2 methods, 25 fields. Typed: 41 of 41 functions and methods (100%). Declarations, docstrings and comments only; no function bodies.</p>
+<h2 id="init-py">__init__.py<a class="src" href="../../src/pysurface/__init__.py">source</a></h2><pre><span class="d">&quot;&quot;&quot;pysurface: a compact, navigable report of a Python package&#x27;s API surface.&quot;&quot;&quot;</span></pre><h2 id="main-py">__main__.py<a class="src" href="../../src/pysurface/__main__.py">source</a></h2><pre></pre><h2 id="core-py">core.py<a class="src" href="../../src/pysurface/core.py">source</a></h2><p class="sum">Typed: 41 of 41 functions and methods (100%).</p><pre><span class="d">&quot;&quot;&quot;pysurface: a compact, navigable report of a Python package&#x27;s API surface.</span>
 <span class="d"></span>
 <span class="d">Reads Python source (a directory, or a git ref of a repository) without importing</span>
 <span class="d">or running it, and writes one Markdown file and one self-contained HTML file:</span>
@@ -33,7 +33,8 @@ a.t{color:inherit;text-decoration:underline dotted}a.ln{color:var(--mut);font-si
 <span class="d">Options: --private keeps module-level private names (inner private members of a</span>
 <span class="d">class are always kept, under &quot;# private&quot;); --brief keeps only the first paragraph</span>
 <span class="d">of each docstring; --no-source-links drops file:line links, so the output depends</span>
-<span class="d">only on the declarations.</span>
+<span class="d">only on the declarations; --no-calls drops the calls / called-by lines;</span>
+<span class="d">--no-type-marks drops the untyped marks and the typed counts.</span>
 <span class="d"></span>
 <span class="d">Layout rules (after vibelight, a tool that does the same for Rust):</span>
 <span class="d">- one section per module, in path order, opening with the module docstring;</span>
@@ -48,194 +49,239 @@ a.t{color:inherit;text-decoration:underline dotted}a.ln{color:var(--mut);font-si
 <span class="d">  unchanged.</span>
 <span class="d">&quot;&quot;&quot;</span>
 
-<span class="k">class </span><span class="n" id="core.Ids">Ids</span>:<a class="ln" href="../../src/pysurface/core.py#L626">core.py:626</a>
+<span class="k">class </span><span class="n" id="core.Ids">Ids</span>:<a class="ln" href="../../src/pysurface/core.py#L675">core.py:675</a>
 <span class="d">    &quot;&quot;&quot;Unique HTML ids: a repeated name (an overload, a property&#x27;s setter, a definition in both</span>
 <span class="d">    branches of an if) gets a -2, -3 ... suffix in document order.</span>
 <span class="d">    &quot;&quot;&quot;</span>
-    <span class="k">self.</span><span class="n" id="core.Ids.seen">seen</span>: dict[str, int] = {}<a class="ln" href="../../src/pysurface/core.py#L630">core.py:630</a>
-    <span class="k">self.</span><span class="n" id="core.Ids.first">first</span>: dict[str, str] = {}<a class="ln" href="../../src/pysurface/core.py#L631">core.py:631</a>
-    <span class="k">def </span><span class="n" id="core.Ids.__call__">__call__</span>(self, qual: str) -&gt; str: ...<a class="ln" href="../../src/pysurface/core.py#L633">core.py:633</a>
-    <span class="k">def </span><span class="n" id="core.Ids.__init__">__init__</span>(self) -&gt; None: ...<a class="ln" href="../../src/pysurface/core.py#L629">core.py:629</a>
+    <span class="k">self.</span><span class="n" id="core.Ids.seen">seen</span>: dict[str, int] = {}<a class="ln" href="../../src/pysurface/core.py#L679">core.py:679</a>
+    <span class="k">self.</span><span class="n" id="core.Ids.first">first</span>: dict[str, str] = {}<a class="ln" href="../../src/pysurface/core.py#L680">core.py:680</a>
+    <span class="k">def </span><span class="n" id="core.Ids.__call__">__call__</span>(self, qual: str) -&gt; str: ...<a class="ln" href="../../src/pysurface/core.py#L682">core.py:682</a>
+    <span class="k">def </span><span class="n" id="core.Ids.__init__">__init__</span>(self) -&gt; None: ...<a class="ln" href="../../src/pysurface/core.py#L678">core.py:678</a>
 
-<span class="k">class </span><span class="n" id="core.InputError">InputError</span>(Exception):<a class="ln" href="../../src/pysurface/core.py#L63">core.py:63</a>
+<span class="k">class </span><span class="n" id="core.InputError">InputError</span>(Exception):<a class="ln" href="../../src/pysurface/core.py#L64">core.py:64</a>
 <span class="d">    &quot;&quot;&quot;The input cannot be used: not a directory, file or repository, or nothing to read.&quot;&quot;&quot;</span>
 
 <span class="k">@dataclass</span>
-<span class="k">class </span><span class="n" id="core.Item">Item</span>:<a class="ln" href="../../src/pysurface/core.py#L130">core.py:130</a>
-    <span class="n" id="core.Item.kind">kind</span>: str  <span class="c"># &quot;class&quot; | &quot;def&quot; | &quot;field&quot; | &quot;attr&quot; | &quot;const&quot;</span><a class="ln" href="../../src/pysurface/core.py#L131">core.py:131</a>
-    <span class="n" id="core.Item.name">name</span>: str<a class="ln" href="../../src/pysurface/core.py#L132">core.py:132</a>
-    <span class="n" id="core.Item.qual">qual</span>: str  <span class="c"># module-qualified anchor id (made unique when rendered)</span><a class="ln" href="../../src/pysurface/core.py#L133">core.py:133</a>
-    <span class="n" id="core.Item.lineno">lineno</span>: int<a class="ln" href="../../src/pysurface/core.py#L134">core.py:134</a>
-    <span class="n" id="core.Item.text">text</span>: list[str]  <span class="c"># declaration lines: kept decorators, then the declaration itself</span><a class="ln" href="../../src/pysurface/core.py#L135">core.py:135</a>
-    <span class="n" id="core.Item.lead">lead</span>: list[str] = field(default_factory=list)  <span class="c"># the comment block directly above</span><a class="ln" href="../../src/pysurface/core.py#L136">core.py:136</a>
-    <span class="n" id="core.Item.tail">tail</span>: str | None = None  <span class="c"># the comment at the end of the declaration&#x27;s own line</span><a class="ln" href="../../src/pysurface/core.py#L137">core.py:137</a>
-    <span class="n" id="core.Item.doc">doc</span>: list[str] = field(default_factory=list)<a class="ln" href="../../src/pysurface/core.py#L138">core.py:138</a>
-    <span class="n" id="core.Item.members">members</span>: list[&#x27;<a class="t" href="#core.Item">Item</a>&#x27;] = field(default_factory=list)<a class="ln" href="../../src/pysurface/core.py#L139">core.py:139</a>
-    <span class="n" id="core.Item.private">private</span>: bool = False<a class="ln" href="../../src/pysurface/core.py#L140">core.py:140</a>
-    <span class="n" id="core.Item.refs">refs</span>: list[CallRef] = field(default_factory=list)  <span class="c"># calls as written (functions and methods)</span><a class="ln" href="../../src/pysurface/core.py#L141">core.py:141</a>
-    <span class="n" id="core.Item.calls">calls</span>: list[str] = field(default_factory=list)  <span class="c"># resolved: quals of package functions it calls</span><a class="ln" href="../../src/pysurface/core.py#L142">core.py:142</a>
-    <span class="n" id="core.Item.called_by">called_by</span>: list[str] = field(default_factory=list)  <span class="c"># resolved: quals of package functions that call it</span><a class="ln" href="../../src/pysurface/core.py#L143">core.py:143</a>
-    <span class="n" id="core.Item.owner">owner</span>: Optional[str] = None  <span class="c"># the enclosing class&#x27;s qual, for methods</span><a class="ln" href="../../src/pysurface/core.py#L144">core.py:144</a>
+<span class="k">class </span><span class="n" id="core.Item">Item</span>:<a class="ln" href="../../src/pysurface/core.py#L131">core.py:131</a>
+    <span class="n" id="core.Item.kind">kind</span>: str  <span class="c"># &quot;class&quot; | &quot;def&quot; | &quot;field&quot; | &quot;attr&quot; | &quot;const&quot;</span><a class="ln" href="../../src/pysurface/core.py#L132">core.py:132</a>
+    <span class="n" id="core.Item.name">name</span>: str<a class="ln" href="../../src/pysurface/core.py#L133">core.py:133</a>
+    <span class="n" id="core.Item.qual">qual</span>: str  <span class="c"># module-qualified anchor id (made unique when rendered)</span><a class="ln" href="../../src/pysurface/core.py#L134">core.py:134</a>
+    <span class="n" id="core.Item.lineno">lineno</span>: int<a class="ln" href="../../src/pysurface/core.py#L135">core.py:135</a>
+    <span class="n" id="core.Item.text">text</span>: list[str]  <span class="c"># declaration lines: kept decorators, then the declaration itself</span><a class="ln" href="../../src/pysurface/core.py#L136">core.py:136</a>
+    <span class="n" id="core.Item.lead">lead</span>: list[str] = field(default_factory=list)  <span class="c"># the comment block directly above</span><a class="ln" href="../../src/pysurface/core.py#L137">core.py:137</a>
+    <span class="n" id="core.Item.tail">tail</span>: str | None = None  <span class="c"># the comment at the end of the declaration&#x27;s own line</span><a class="ln" href="../../src/pysurface/core.py#L138">core.py:138</a>
+    <span class="n" id="core.Item.doc">doc</span>: list[str] = field(default_factory=list)<a class="ln" href="../../src/pysurface/core.py#L139">core.py:139</a>
+    <span class="n" id="core.Item.members">members</span>: list[&#x27;<a class="t" href="#core.Item">Item</a>&#x27;] = field(default_factory=list)<a class="ln" href="../../src/pysurface/core.py#L140">core.py:140</a>
+    <span class="n" id="core.Item.private">private</span>: bool = False<a class="ln" href="../../src/pysurface/core.py#L141">core.py:141</a>
+    <span class="n" id="core.Item.refs">refs</span>: list[CallRef] = field(default_factory=list)  <span class="c"># calls as written (functions and methods)</span><a class="ln" href="../../src/pysurface/core.py#L142">core.py:142</a>
+    <span class="n" id="core.Item.calls">calls</span>: list[str] = field(default_factory=list)  <span class="c"># resolved: quals of package functions it calls</span><a class="ln" href="../../src/pysurface/core.py#L143">core.py:143</a>
+    <span class="n" id="core.Item.called_by">called_by</span>: list[str] = field(default_factory=list)  <span class="c"># resolved: quals of package functions that call it</span><a class="ln" href="../../src/pysurface/core.py#L144">core.py:144</a>
+    <span class="n" id="core.Item.owner">owner</span>: Optional[str] = None  <span class="c"># the enclosing class&#x27;s qual, for methods</span><a class="ln" href="../../src/pysurface/core.py#L145">core.py:145</a>
+    <span class="n" id="core.Item.untyped">untyped</span>: list[str] = field(default_factory=list)  <span class="c"># parameters without an annotation, and &quot;return&quot; if it has none</span><a class="ln" href="../../src/pysurface/core.py#L146">core.py:146</a>
 
 <span class="k">@dataclass</span>
-<span class="k">class </span><span class="n" id="core.Module">Module</span>:<a class="ln" href="../../src/pysurface/core.py#L148">core.py:148</a>
-    <span class="n" id="core.Module.path">path</span>: str<a class="ln" href="../../src/pysurface/core.py#L149">core.py:149</a>
-    <span class="n" id="core.Module.doc">doc</span>: list[str]<a class="ln" href="../../src/pysurface/core.py#L150">core.py:150</a>
-    <span class="n" id="core.Module.items">items</span>: list[<a class="t" href="#core.Item">Item</a>]<a class="ln" href="../../src/pysurface/core.py#L151">core.py:151</a>
-    <span class="n" id="core.Module.hidden">hidden</span>: int = 0<a class="ln" href="../../src/pysurface/core.py#L152">core.py:152</a>
-    <span class="n" id="core.Module.error">error</span>: str = &#x27;&#x27;<a class="ln" href="../../src/pysurface/core.py#L153">core.py:153</a>
-    <span class="n" id="core.Module.qual">qual</span>: str = &#x27;&#x27;  <span class="c"># dotted module name from its path</span><a class="ln" href="../../src/pysurface/core.py#L154">core.py:154</a>
-    <span class="n" id="core.Module.unlisted">unlisted</span>: list[<a class="t" href="#core.Item">Item</a>] = field(default_factory=list)  <span class="c"># private names left out of the listing, kept for calls</span><a class="ln" href="../../src/pysurface/core.py#L155">core.py:155</a>
-    <span class="n" id="core.Module.imports">imports</span>: dict[str, tuple[str, Optional[str]]] = field(default_factory=dict)<a class="ln" href="../../src/pysurface/core.py#L156">core.py:156</a>
+<span class="k">class </span><span class="n" id="core.Module">Module</span>:<a class="ln" href="../../src/pysurface/core.py#L150">core.py:150</a>
+    <span class="n" id="core.Module.path">path</span>: str<a class="ln" href="../../src/pysurface/core.py#L151">core.py:151</a>
+    <span class="n" id="core.Module.doc">doc</span>: list[str]<a class="ln" href="../../src/pysurface/core.py#L152">core.py:152</a>
+    <span class="n" id="core.Module.items">items</span>: list[<a class="t" href="#core.Item">Item</a>]<a class="ln" href="../../src/pysurface/core.py#L153">core.py:153</a>
+    <span class="n" id="core.Module.hidden">hidden</span>: int = 0<a class="ln" href="../../src/pysurface/core.py#L154">core.py:154</a>
+    <span class="n" id="core.Module.error">error</span>: str = &#x27;&#x27;<a class="ln" href="../../src/pysurface/core.py#L155">core.py:155</a>
+    <span class="n" id="core.Module.qual">qual</span>: str = &#x27;&#x27;  <span class="c"># dotted module name from its path</span><a class="ln" href="../../src/pysurface/core.py#L156">core.py:156</a>
+    <span class="n" id="core.Module.unlisted">unlisted</span>: list[<a class="t" href="#core.Item">Item</a>] = field(default_factory=list)  <span class="c"># private names left out of the listing, kept for calls</span><a class="ln" href="../../src/pysurface/core.py#L157">core.py:157</a>
+    <span class="n" id="core.Module.imports">imports</span>: dict[str, tuple[str, Optional[str]]] = field(default_factory=dict)<a class="ln" href="../../src/pysurface/core.py#L158">core.py:158</a>
 
-<span class="k">def </span><span class="n" id="core.anchor">anchor</span>(path: str) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L585">core.py:585</a>
+<span class="k">def </span><span class="n" id="core.anchor">anchor</span>(path: str) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L630">core.py:630</a>
     <span class="c"># called by: </span><a class="t" href="#core.render_html">render_html</a>, <a class="t" href="#core.render_md">render_md</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.args_of">args_of</span>(fn: FuncDef) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L213">core.py:213</a>
+<span class="k">def </span><span class="n" id="core.args_of">args_of</span>(fn: FuncDef) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L215">core.py:215</a>
     <span class="c"># calls: </span><a class="t" href="#core.short">short</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.make_def">make_def</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.call_lines">call_lines</span>(it: <a class="t" href="#core.Item">Item</a>, here: str, limit: int = 12) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L510">core.py:510</a>
+<span class="k">def </span><span class="n" id="core.call_lines">call_lines</span>(it: <a class="t" href="#core.Item">Item</a>, here: str, limit: int = 12) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L529">core.py:529</a>
     <span class="c"># calls: </span><a class="t" href="#core.short_qual">short_qual</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.item_text">item_text</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.call_refs">call_refs</span>(fn: FuncDef) -&gt; list[CallRef]:<a class="ln" href="../../src/pysurface/core.py#L272">core.py:272</a>
+<span class="k">def </span><span class="n" id="core.call_refs">call_refs</span>(fn: FuncDef) -&gt; list[CallRef]:<a class="ln" href="../../src/pysurface/core.py#L291">core.py:291</a>
 <span class="d">    &quot;&quot;&quot;The calls a function makes, as written, in source order, each once: f(), x.f(), self.f().&quot;&quot;&quot;</span>
     <span class="c"># called by: </span><a class="t" href="#core.make_def">make_def</a><span class="c"></span>
 
-<span class="k">def </span><span class="n" id="core.comment_block">comment_block</span>(lines: list[str], indent: str) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L522">core.py:522</a>
+<span class="k">def </span><span class="n" id="core.comment_block">comment_block</span>(lines: list[str], indent: str) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L541">core.py:541</a>
     <span class="c"># called by: </span><a class="t" href="#core.item_text">item_text</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.comment_map">comment_map</span>(src: str) -&gt; tuple[Comments, set[int]]:<a class="ln" href="../../src/pysurface/core.py#L160">core.py:160</a>
+<span class="k">def </span><span class="n" id="core.comment_map">comment_map</span>(src: str) -&gt; tuple[Comments, set[int]]:<a class="ln" href="../../src/pysurface/core.py#L162">core.py:162</a>
 <span class="d">    &quot;&quot;&quot;line -&gt; comment text; and the set of lines that hold only a comment.&quot;&quot;&quot;</span>
     <span class="c"># called by: </span><a class="t" href="#core.parse_module">parse_module</a><span class="c"></span>
 
-<span class="k">def </span><span class="n" id="core.count">count</span>(mods: list[<a class="t" href="#core.Module">Module</a>]) -&gt; dict[str, int]:<a class="ln" href="../../src/pysurface/core.py#L569">core.py:569</a>
+<span class="k">def </span><span class="n" id="core.count">count</span>(mods: list[<a class="t" href="#core.Module">Module</a>]) -&gt; dict[str, int]:<a class="ln" href="../../src/pysurface/core.py#L592">core.py:592</a>
+    <span class="c"># called by: </span><a class="t" href="#core.render_html">render_html</a>, <a class="t" href="#core.render_md">render_md</a><span class="c"></span>
+    ...
+
+<span class="k">def </span><span class="n" id="core.coverage">coverage</span>(m: <a class="t" href="#core.Module">Module</a>) -&gt; tuple[int, int]:<a class="ln" href="../../src/pysurface/core.py#L608">core.py:608</a>
+<span class="d">    &quot;&quot;&quot;(fully annotated, all) functions and methods in a module, private and unlisted ones included.&quot;&quot;&quot;</span>
+    <span class="c"># called by: </span><a class="t" href="#core.render_html">render_html</a>, <a class="t" href="#core.render_md">render_md</a>, <a class="t" href="#core.total_coverage">total_coverage</a><span class="c"></span>
+
+<span class="k">def </span><span class="n" id="core.coverage_text">coverage_text</span>(typed: int, total: int) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L625">core.py:625</a>
+<span class="d">    &quot;&quot;&quot;A line such as: Typed: 40 of 42 functions and methods (95%). The percentage rounds down, so 100% means all.&quot;&quot;&quot;</span>
     <span class="c"># called by: </span><a class="t" href="#core.render_html">render_html</a>, <a class="t" href="#core.render_md">render_md</a><span class="c"></span>
 
-<span class="k">def </span><span class="n" id="core.deco_lines">deco_lines</span>(node: Decorated) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L247">core.py:247</a>
+<span class="k">def </span><span class="n" id="core.deco_lines">deco_lines</span>(node: Decorated) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L249">core.py:249</a>
     <span class="c"># called by: </span><a class="t" href="#core.make_class">make_class</a>, <a class="t" href="#core.make_def">make_def</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.doc_block">doc_block</span>(lines: list[str], indent: str) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L526">core.py:526</a>
+<span class="k">def </span><span class="n" id="core.doc_block">doc_block</span>(lines: list[str], indent: str) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L545">core.py:545</a>
     <span class="c"># called by: </span><a class="t" href="#core.html_lines">html_lines</a>, <a class="t" href="#core.item_text">item_text</a>, <a class="t" href="#core.module_text">module_text</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.docstring">docstring</span>(node: Documented, brief: bool) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L202">core.py:202</a>
+<span class="k">def </span><span class="n" id="core.docstring">docstring</span>(node: Documented, brief: bool) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L204">core.py:204</a>
     <span class="c"># called by: </span><a class="t" href="#core.make_class">make_class</a>, <a class="t" href="#core.make_def">make_def</a>, <a class="t" href="#core.parse_module">parse_module</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.excluded">excluded</span>(path: str, globs: tuple[str, ...]) -&gt; bool:<a class="ln" href="../../src/pysurface/core.py#L67">core.py:67</a>
+<span class="k">def </span><span class="n" id="core.excluded">excluded</span>(path: str, globs: tuple[str, ...]) -&gt; bool:<a class="ln" href="../../src/pysurface/core.py#L68">core.py:68</a>
     <span class="c"># called by: </span><a class="t" href="#core.sources_from_dir">sources_from_dir</a>, <a class="t" href="#core.sources_from_git">sources_from_git</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.first_line">first_line</span>(node: Decorated) -&gt; int:<a class="ln" href="../../src/pysurface/core.py#L257">core.py:257</a>
+<span class="k">def </span><span class="n" id="core.first_line">first_line</span>(node: Decorated) -&gt; int:<a class="ln" href="../../src/pysurface/core.py#L259">core.py:259</a>
     <span class="c"># called by: </span><a class="t" href="#core.make_class">make_class</a>, <a class="t" href="#core.make_def">make_def</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.git">git</span>(repo: str, *args: str) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L73">core.py:73</a>
+<span class="k">def </span><span class="n" id="core.git">git</span>(repo: str, *args: str) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L74">core.py:74</a>
     <span class="c"># calls: </span><a class="t" href="#core.InputError">InputError</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.sources_from_git">sources_from_git</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.html_lines">html_lines</span>(m: <a class="t" href="#core.Module">Module</a>, names: dict[str, str], src_link: str | None, ids: <a class="t" href="#core.Ids">Ids</a>, listed: set[str]) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L639">core.py:639</a>
+<span class="k">def </span><span class="n" id="core.html_lines">html_lines</span>(m: <a class="t" href="#core.Module">Module</a>, names: dict[str, str], src_link: str | None, ids: <a class="t" href="#core.Ids">Ids</a>, listed: set[str], marks: bool = True) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L688">core.py:688</a>
 <span class="d">    &quot;&quot;&quot;Render one module&#x27;s declarations with anchors on every declaration and links on known type names.&quot;&quot;&quot;</span>
     <span class="c"># calls: </span><a class="t" href="#core.doc_block">doc_block</a>, <a class="t" href="#core.short_qual">short_qual</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.render_html">render_html</a><span class="c"></span>
 
-<span class="k">def </span><span class="n" id="core.imports_of">imports_of</span>(tree: ast.<a class="t" href="#core.Module">Module</a>, mod_qual: str) -&gt; dict[str, tuple[str, str | None]]:<a class="ln" href="../../src/pysurface/core.py#L404">core.py:404</a>
+<span class="k">def </span><span class="n" id="core.imports_of">imports_of</span>(tree: ast.<a class="t" href="#core.Module">Module</a>, mod_qual: str) -&gt; dict[str, tuple[str, str | None]]:<a class="ln" href="../../src/pysurface/core.py#L423">core.py:423</a>
 <span class="d">    &quot;&quot;&quot;Every import in the module, including ones inside functions: local name -&gt; (module, name in</span>
 <span class="d">    it, or None). Relative imports are made absolute against this module&#x27;s own dotted name.</span>
 <span class="d">    &quot;&quot;&quot;</span>
     <span class="c"># called by: </span><a class="t" href="#core.parse_module">parse_module</a><span class="c"></span>
 
-<span class="k">def </span><span class="n" id="core.instance_attributes">instance_attributes</span>(cls: ast.ClassDef, known: set[str], qual: str, comments: Comments, only: set[int]) -&gt; list[<a class="t" href="#core.Item">Item</a>]:<a class="ln" href="../../src/pysurface/core.py#L288">core.py:288</a>
+<span class="k">def </span><span class="n" id="core.instance_attributes">instance_attributes</span>(cls: ast.ClassDef, known: set[str], qual: str, comments: Comments, only: set[int]) -&gt; list[<a class="t" href="#core.Item">Item</a>]:<a class="ln" href="../../src/pysurface/core.py#L307">core.py:307</a>
 <span class="d">    &quot;&quot;&quot;Attributes assigned as self.x in __init__ (or __post_init__), in first-assignment order.&quot;&quot;&quot;</span>
     <span class="c"># calls: </span><a class="t" href="#core.short">short</a>, <a class="t" href="#core.Item">Item</a>, <a class="t" href="#core.leading_comments">leading_comments</a>, <a class="t" href="#core.trailing_comment">trailing_comment</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.make_class">make_class</a><span class="c"></span>
 
-<span class="k">def </span><span class="n" id="core.item_text">item_text</span>(it: <a class="t" href="#core.Item">Item</a>, indent: str = &#x27;&#x27;, here: str = &#x27;&#x27;, calls: bool = True) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L534">core.py:534</a>
-    <span class="c"># calls: </span><a class="t" href="#core.comment_block">comment_block</a>, <a class="t" href="#core.doc_block">doc_block</a>, <a class="t" href="#core.call_lines">call_lines</a><span class="c"></span>
+<span class="k">def </span><span class="n" id="core.item_text">item_text</span>(it: <a class="t" href="#core.Item">Item</a>, indent: str = &#x27;&#x27;, here: str = &#x27;&#x27;, calls: bool = True, marks: bool = True) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L553">core.py:553</a>
+    <span class="c"># calls: </span><a class="t" href="#core.comment_block">comment_block</a>, <a class="t" href="#core.call_lines">call_lines</a>, <a class="t" href="#core.doc_block">doc_block</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.module_text">module_text</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.leading_comments">leading_comments</span>(first_line: int, comments: Comments, only: set[int]) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L178">core.py:178</a>
+<span class="k">def </span><span class="n" id="core.leading_comments">leading_comments</span>(first_line: int, comments: Comments, only: set[int]) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L180">core.py:180</a>
     <span class="c"># called by: </span><a class="t" href="#core.instance_attributes">instance_attributes</a>, <a class="t" href="#core.make_class">make_class</a>, <a class="t" href="#core.make_def">make_def</a>, <a class="t" href="#core.parse_module">parse_module</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.link_calls">link_calls</span>(mods: list[<a class="t" href="#core.Module">Module</a>]) -&gt; None:<a class="ln" href="../../src/pysurface/core.py#L427">core.py:427</a>
+<span class="k">def </span><span class="n" id="core.link_calls">link_calls</span>(mods: list[<a class="t" href="#core.Module">Module</a>]) -&gt; None:<a class="ln" href="../../src/pysurface/core.py#L446">core.py:446</a>
 <span class="d">    &quot;&quot;&quot;Resolve each function&#x27;s calls to functions, methods and classes in this package, by name.</span>
 <span class="d">    Static and approximate: a call through a variable, an argument or an unknown object is left out.</span>
 <span class="d">    &quot;&quot;&quot;</span>
     <span class="c"># called by: </span><a class="t" href="#core.load">load</a><span class="c"></span>
 
-<span class="k">def </span><span class="n" id="core.load">load</span>(args: argparse.Namespace, ref: str | None) -&gt; list[<a class="t" href="#core.Module">Module</a>]:<a class="ln" href="../../src/pysurface/core.py#L759">core.py:759</a>
+<span class="k">def </span><span class="n" id="core.load">load</span>(args: argparse.Namespace, ref: str | None) -&gt; list[<a class="t" href="#core.Module">Module</a>]:<a class="ln" href="../../src/pysurface/core.py#L817">core.py:817</a>
     <span class="c"># calls: </span><a class="t" href="#core.sources_from_git">sources_from_git</a>, <a class="t" href="#core.sources_from_dir">sources_from_dir</a>, <a class="t" href="#core.InputError">InputError</a>, <a class="t" href="#core.parse_module">parse_module</a>, <a class="t" href="#core.link_calls">link_calls</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.run">run</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.main">main</span>(argv: list[str] | None = None) -&gt; int:<a class="ln" href="../../src/pysurface/core.py#L773">core.py:773</a>
+<span class="k">def </span><span class="n" id="core.main">main</span>(argv: list[str] | None = None) -&gt; int:<a class="ln" href="../../src/pysurface/core.py#L831">core.py:831</a>
     <span class="c"># calls: </span><a class="t" href="#core.run">run</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.make_class">make_class</span>(cls: ast.ClassDef, mod_qual: str, comments: Comments, only: set[int], brief: bool, context: str | None = None) -&gt; <a class="t" href="#core.Item">Item</a>:<a class="ln" href="../../src/pysurface/core.py#L312">core.py:312</a>
+<span class="k">def </span><span class="n" id="core.make_class">make_class</span>(cls: ast.ClassDef, mod_qual: str, comments: Comments, only: set[int], brief: bool, context: str | None = None) -&gt; <a class="t" href="#core.Item">Item</a>:<a class="ln" href="../../src/pysurface/core.py#L331">core.py:331</a>
     <span class="c"># calls: </span><a class="t" href="#core.leading_comments">leading_comments</a>, <a class="t" href="#core.first_line">first_line</a>, <a class="t" href="#core.Item">Item</a>, <a class="t" href="#core.deco_lines">deco_lines</a>, <a class="t" href="#core.docstring">docstring</a>, <a class="t" href="#core.short">short</a>, <a class="t" href="#core.trailing_comment">trailing_comment</a>, <a class="t" href="#core.make_def">make_def</a>, <a class="t" href="#core.instance_attributes">instance_attributes</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.parse_module">parse_module</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.make_def">make_def</span>(fn: FuncDef, qual: str, comments: Comments, only: set[int], brief: bool, context: str | None = None, owner: str | None = None) -&gt; <a class="t" href="#core.Item">Item</a>:<a class="ln" href="../../src/pysurface/core.py#L261">core.py:261</a>
-    <span class="c"># calls: </span><a class="t" href="#core.deco_lines">deco_lines</a>, <a class="t" href="#core.args_of">args_of</a>, <a class="t" href="#core.leading_comments">leading_comments</a>, <a class="t" href="#core.first_line">first_line</a>, <a class="t" href="#core.Item">Item</a>, <a class="t" href="#core.docstring">docstring</a>, <a class="t" href="#core.call_refs">call_refs</a><span class="c"></span>
+<span class="k">def </span><span class="n" id="core.make_def">make_def</span>(fn: FuncDef, qual: str, comments: Comments, only: set[int], brief: bool, context: str | None = None, owner: str | None = None) -&gt; <a class="t" href="#core.Item">Item</a>:<a class="ln" href="../../src/pysurface/core.py#L280">core.py:280</a>
+    <span class="c"># calls: </span><a class="t" href="#core.deco_lines">deco_lines</a>, <a class="t" href="#core.args_of">args_of</a>, <a class="t" href="#core.leading_comments">leading_comments</a>, <a class="t" href="#core.first_line">first_line</a>, <a class="t" href="#core.Item">Item</a>, <a class="t" href="#core.docstring">docstring</a>, <a class="t" href="#core.call_refs">call_refs</a>, <a class="t" href="#core.untyped_of">untyped_of</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.make_class">make_class</a>, <a class="t" href="#core.parse_module">parse_module</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.module_statements">module_statements</span>(body: list[ast.stmt], context: str | None = None) -&gt; Iterator[tuple[ast.stmt, str | None]]:<a class="ln" href="../../src/pysurface/core.py#L346">core.py:346</a>
+<span class="k">def </span><span class="n" id="core.module_statements">module_statements</span>(body: list[ast.stmt], context: str | None = None) -&gt; Iterator[tuple[ast.stmt, str | None]]:<a class="ln" href="../../src/pysurface/core.py#L365">core.py:365</a>
 <span class="d">    &quot;&quot;&quot;Top-level statements, descending into module-level if/try blocks. Yields (node, context),</span>
 <span class="d">    where context names the block a definition sits in, such as &quot;in: if TYPE_CHECKING&quot;.</span>
 <span class="d">    &quot;&quot;&quot;</span>
     <span class="c"># called by: </span><a class="t" href="#core.parse_module">parse_module</a><span class="c"></span>
 
-<span class="k">def </span><span class="n" id="core.module_text">module_text</span>(m: <a class="t" href="#core.Module">Module</a>, calls: bool = True) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L556">core.py:556</a>
+<span class="k">def </span><span class="n" id="core.module_text">module_text</span>(m: <a class="t" href="#core.Module">Module</a>, calls: bool = True, marks: bool = True) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L579">core.py:579</a>
     <span class="c"># calls: </span><a class="t" href="#core.doc_block">doc_block</a>, <a class="t" href="#core.item_text">item_text</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.render_diff">render_diff</a>, <a class="t" href="#core.render_md">render_md</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.parse_module">parse_module</span>(path: str, src: str, private: bool, brief: bool) -&gt; <a class="t" href="#core.Module">Module</a>:<a class="ln" href="../../src/pysurface/core.py#L365">core.py:365</a>
+<span class="k">def </span><span class="n" id="core.parse_module">parse_module</span>(path: str, src: str, private: bool, brief: bool) -&gt; <a class="t" href="#core.Module">Module</a>:<a class="ln" href="../../src/pysurface/core.py#L384">core.py:384</a>
     <span class="c"># calls: </span><a class="t" href="#core.Module">Module</a>, <a class="t" href="#core.comment_map">comment_map</a>, <a class="t" href="#core.module_statements">module_statements</a>, <a class="t" href="#core.make_class">make_class</a>, <a class="t" href="#core.make_def">make_def</a>, <a class="t" href="#core.short">short</a>, <a class="t" href="#core.Item">Item</a>, <a class="t" href="#core.leading_comments">leading_comments</a>, <a class="t" href="#core.trailing_comment">trailing_comment</a>, <a class="t" href="#core.docstring">docstring</a>, <a class="t" href="#core.imports_of">imports_of</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.load">load</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.render_diff">render_diff</span>(old: list[<a class="t" href="#core.Module">Module</a>], new: list[<a class="t" href="#core.Module">Module</a>], title: str) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L735">core.py:735</a>
+<span class="k">def </span><span class="n" id="core.render_diff">render_diff</span>(old: list[<a class="t" href="#core.Module">Module</a>], new: list[<a class="t" href="#core.Module">Module</a>], title: str) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L793">core.py:793</a>
     <span class="c"># calls: </span><a class="t" href="#core.module_text">module_text</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.run">run</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.render_html">render_html</span>(mods: list[<a class="t" href="#core.Module">Module</a>], title: str, src_link: str | None) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L704">core.py:704</a>
-    <span class="c"># calls: </span><a class="t" href="#core.count">count</a>, <a class="t" href="#core.anchor">anchor</a>, <a class="t" href="#core.Ids">Ids</a>, <a class="t" href="#core.html_lines">html_lines</a><span class="c"></span>
+<span class="k">def </span><span class="n" id="core.render_html">render_html</span>(mods: list[<a class="t" href="#core.Module">Module</a>], title: str, src_link: str | None, marks: bool = True) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L758">core.py:758</a>
+    <span class="c"># calls: </span><a class="t" href="#core.count">count</a>, <a class="t" href="#core.anchor">anchor</a>, <a class="t" href="#core.coverage_text">coverage_text</a>, <a class="t" href="#core.total_coverage">total_coverage</a>, <a class="t" href="#core.Ids">Ids</a>, <a class="t" href="#core.coverage">coverage</a>, <a class="t" href="#core.html_lines">html_lines</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.run">run</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.render_md">render_md</span>(mods: list[<a class="t" href="#core.Module">Module</a>], title: str, src_link: str | None) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L589">core.py:589</a>
-    <span class="c"># calls: </span><a class="t" href="#core.count">count</a>, <a class="t" href="#core.anchor">anchor</a>, <a class="t" href="#core.module_text">module_text</a><span class="c"></span>
+<span class="k">def </span><span class="n" id="core.render_md">render_md</span>(mods: list[<a class="t" href="#core.Module">Module</a>], title: str, src_link: str | None, marks: bool = True) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L634">core.py:634</a>
+    <span class="c"># calls: </span><a class="t" href="#core.count">count</a>, <a class="t" href="#core.coverage_text">coverage_text</a>, <a class="t" href="#core.total_coverage">total_coverage</a>, <a class="t" href="#core.anchor">anchor</a>, <a class="t" href="#core.coverage">coverage</a>, <a class="t" href="#core.module_text">module_text</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.run">run</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.run">run</span>(argv: list[str] | None) -&gt; int:<a class="ln" href="../../src/pysurface/core.py#L781">core.py:781</a>
+<span class="k">def </span><span class="n" id="core.run">run</span>(argv: list[str] | None) -&gt; int:<a class="ln" href="../../src/pysurface/core.py#L839">core.py:839</a>
     <span class="c"># calls: </span><a class="t" href="#core.render_diff">render_diff</a>, <a class="t" href="#core.load">load</a>, <a class="t" href="#core.render_md">render_md</a>, <a class="t" href="#core.render_html">render_html</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.main">main</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.short">short</span>(node: ast.AST) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L197">core.py:197</a>
+<span class="k">def </span><span class="n" id="core.short">short</span>(node: ast.AST) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L199">core.py:199</a>
     <span class="c"># called by: </span><a class="t" href="#core.args_of">args_of</a>, <a class="t" href="#core.instance_attributes">instance_attributes</a>, <a class="t" href="#core.make_class">make_class</a>, <a class="t" href="#core.parse_module">parse_module</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.short_qual">short_qual</span>(q: str, here: str) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L494">core.py:494</a>
+<span class="k">def </span><span class="n" id="core.short_qual">short_qual</span>(q: str, here: str) -&gt; str:<a class="ln" href="../../src/pysurface/core.py#L513">core.py:513</a>
 <span class="d">    &quot;&quot;&quot;How a call target is written in a report: Class.method or name inside the same module,</span>
 <span class="d">    module.name (last path component) elsewhere.</span>
 <span class="d">    &quot;&quot;&quot;</span>
     <span class="c"># called by: </span><a class="t" href="#core.call_lines">call_lines</a>, <a class="t" href="#core.html_lines">html_lines</a><span class="c"></span>
 
-<span class="k">def </span><span class="n" id="core.sources_from_dir">sources_from_dir</span>(path: str, skip: tuple[str, ...]) -&gt; dict[str, str]:<a class="ln" href="../../src/pysurface/core.py#L107">core.py:107</a>
+<span class="k">def </span><span class="n" id="core.sources_from_dir">sources_from_dir</span>(path: str, skip: tuple[str, ...]) -&gt; dict[str, str]:<a class="ln" href="../../src/pysurface/core.py#L108">core.py:108</a>
     <span class="c"># calls: </span><a class="t" href="#core.InputError">InputError</a>, <a class="t" href="#core.excluded">excluded</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.load">load</a><span class="c"></span>
+    ...
 
-<span class="k">def </span><span class="n" id="core.sources_from_git">sources_from_git</span>(repo: str, ref: str, root: str, skip: tuple[str, ...]) -&gt; dict[str, str]:<a class="ln" href="../../src/pysurface/core.py#L82">core.py:82</a>
+<span class="k">def </span><span class="n" id="core.sources_from_git">sources_from_git</span>(repo: str, ref: str, root: str, skip: tuple[str, ...]) -&gt; dict[str, str]:<a class="ln" href="../../src/pysurface/core.py#L83">core.py:83</a>
 <span class="d">    &quot;&quot;&quot;Every .py file under root at ref, read through one `git cat-file --batch` process.&quot;&quot;&quot;</span>
     <span class="c"># calls: </span><a class="t" href="#core.git">git</a>, <a class="t" href="#core.excluded">excluded</a><span class="c"></span>
     <span class="c"># called by: </span><a class="t" href="#core.load">load</a><span class="c"></span>
 
-<span class="k">def </span><span class="n" id="core.trailing_comment">trailing_comment</span>(node: ast.stmt, comments: Comments, only: set[int]) -&gt; str | None:<a class="ln" href="../../src/pysurface/core.py#L189">core.py:189</a>
+<span class="k">def </span><span class="n" id="core.total_coverage">total_coverage</span>(mods: list[<a class="t" href="#core.Module">Module</a>]) -&gt; tuple[int, int]:<a class="ln" href="../../src/pysurface/core.py#L620">core.py:620</a>
+    <span class="c"># calls: </span><a class="t" href="#core.coverage">coverage</a><span class="c"></span>
+    <span class="c"># called by: </span><a class="t" href="#core.render_html">render_html</a>, <a class="t" href="#core.render_md">render_md</a><span class="c"></span>
+    ...
+
+<span class="k">def </span><span class="n" id="core.trailing_comment">trailing_comment</span>(node: ast.stmt, comments: Comments, only: set[int]) -&gt; str | None:<a class="ln" href="../../src/pysurface/core.py#L191">core.py:191</a>
 <span class="d">    &quot;&quot;&quot;The comment at the end of the line where the statement ends, if that line also holds code.&quot;&quot;&quot;</span>
     <span class="c"># called by: </span><a class="t" href="#core.instance_attributes">instance_attributes</a>, <a class="t" href="#core.make_class">make_class</a>, <a class="t" href="#core.parse_module">parse_module</a><span class="c"></span>
 
-<span class="n" id="core.CSS">CSS</span> = ...<a class="ln" href="../../src/pysurface/core.py#L610">core.py:610</a>
+<span class="k">def </span><span class="n" id="core.untyped_of">untyped_of</span>(fn: FuncDef, method: bool) -&gt; list[str]:<a class="ln" href="../../src/pysurface/core.py#L263">core.py:263</a>
+<span class="d">    &quot;&quot;&quot;The parameters with no annotation, in order, then &quot;return&quot; when the return type is missing.</span>
+<span class="d">    A method&#x27;s self or cls is not counted, nor is __init__&#x27;s return.</span>
+<span class="d">    &quot;&quot;&quot;</span>
+    <span class="c"># called by: </span><a class="t" href="#core.make_def">make_def</a><span class="c"></span>
+
+<span class="n" id="core.CSS">CSS</span> = ...<a class="ln" href="../../src/pysurface/core.py#L659">core.py:659</a>
 
 <span class="c"># Decorators that change what a declaration means. Matched on the last dotted component,</span>
 <span class="c"># so @abc.abstractmethod, @typing.overload and @functools.lru_cache(...) are kept too.</span>
-<span class="n" id="core.KEEP_DECOS">KEEP_DECOS</span> = ...<a class="ln" href="../../src/pysurface/core.py#L241">core.py:241</a>
+<span class="n" id="core.KEEP_DECOS">KEEP_DECOS</span> = ...<a class="ln" href="../../src/pysurface/core.py#L243">core.py:243</a>
 
-<span class="n" id="core.MAXV">MAXV</span> = 60<a class="ln" href="../../src/pysurface/core.py#L57">core.py:57</a>
+<span class="n" id="core.MAXV">MAXV</span> = 60<a class="ln" href="../../src/pysurface/core.py#L58">core.py:58</a>
 
-<span class="n" id="core.SKIP_DIRS">SKIP_DIRS</span> = ...<a class="ln" href="../../src/pysurface/core.py#L60">core.py:60</a>
+<span class="n" id="core.SKIP_DIRS">SKIP_DIRS</span> = ...<a class="ln" href="../../src/pysurface/core.py#L61">core.py:61</a>
 
-<span class="n" id="core.TEST_GLOBS">TEST_GLOBS</span> = ...<a class="ln" href="../../src/pysurface/core.py#L59">core.py:59</a></pre></main></body></html>
+<span class="n" id="core.TEST_GLOBS">TEST_GLOBS</span> = ...<a class="ln" href="../../src/pysurface/core.py#L60">core.py:60</a></pre></main></body></html>

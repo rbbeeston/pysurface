@@ -16,7 +16,8 @@ no imports of the package, so it runs in a second or two on a large package.
 Options: --private keeps module-level private names (inner private members of a
 class are always kept, under "# private"); --brief keeps only the first paragraph
 of each docstring; --no-source-links drops file:line links, so the output depends
-only on the declarations.
+only on the declarations; --no-calls drops the calls / called-by lines;
+--no-type-marks drops the untyped marks and the typed counts.
 
 Layout rules (after vibelight, a tool that does the same for Rust):
 - one section per module, in path order, opening with the module docstring;
@@ -55,7 +56,7 @@ Comments = dict[int, str]          # line number -> comment text
 CallRef = tuple[str, ...]          # ("name", n) or ("attr", base, attr): a call as written, before resolution
 
 MAXV = 60
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 TEST_GLOBS = ("tests/*", "*/tests/*", "test/*", "*/test/*", "test_*.py", "*/test_*.py", "*_test.py", "conftest.py", "*/conftest.py")
 SKIP_DIRS = {"__pycache__", "node_modules", ".venv", "venv", "build", "dist", ".git", ".tox", ".nox", ".eggs"}
 
@@ -142,6 +143,7 @@ class Item:
     calls: list[str] = field(default_factory=list)          # resolved: quals of package functions it calls
     called_by: list[str] = field(default_factory=list)      # resolved: quals of package functions that call it
     owner: Optional[str] = None                             # the enclosing class's qual, for methods
+    untyped: list[str] = field(default_factory=list)        # parameters without an annotation, and "return" if it has none
 
 
 @dataclass
@@ -258,6 +260,23 @@ def first_line(node: Decorated) -> int:
     return min([node.lineno] + [d.lineno for d in getattr(node, "decorator_list", [])])
 
 
+def untyped_of(fn: FuncDef, method: bool) -> list[str]:
+    """The parameters with no annotation, in order, then "return" when the return type is missing.
+    A method's self or cls is not counted, nor is __init__'s return."""
+    a = fn.args
+    pos = a.posonlyargs + a.args
+    if method and pos and not any(d.endswith("staticmethod") for d in map(ast.unparse, fn.decorator_list)):
+        pos = pos[1:]
+    out = [p.arg for p in pos + a.kwonlyargs if p.annotation is None]
+    if a.vararg and a.vararg.annotation is None:
+        out.insert(len(pos), "*" + a.vararg.arg)
+    if a.kwarg and a.kwarg.annotation is None:
+        out.append("**" + a.kwarg.arg)
+    if fn.returns is None and fn.name != "__init__":
+        out.append("return")
+    return out
+
+
 def make_def(fn: FuncDef, qual: str, comments: Comments, only: set[int], brief: bool,
              context: str | None = None, owner: str | None = None) -> Item:
     kw = "async def" if isinstance(fn, ast.AsyncFunctionDef) else "def"
@@ -266,7 +285,7 @@ def make_def(fn: FuncDef, qual: str, comments: Comments, only: set[int], brief: 
     lead = leading_comments(first_line(fn), comments, only) + ([context] if context else [])
     return Item("def", fn.name, qual, fn.lineno, text, lead, None,
                 docstring(fn, brief), private=fn.name.startswith("_") and not fn.name.endswith("__"),
-                refs=call_refs(fn), owner=owner)
+                refs=call_refs(fn), owner=owner, untyped=untyped_of(fn, owner is not None))
 
 
 def call_refs(fn: FuncDef) -> list[CallRef]:
@@ -531,15 +550,19 @@ def doc_block(lines: list[str], indent: str) -> list[str]:
     return [f'{indent}"""{lines[0]}'] + [f"{indent}{l}" if l else "" for l in lines[1:]] + [f'{indent}"""']
 
 
-def item_text(it: Item, indent: str = "", here: str = "", calls: bool = True) -> list[str]:
+def item_text(it: Item, indent: str = "", here: str = "", calls: bool = True, marks: bool = True) -> list[str]:
     out = comment_block(it.lead, indent)
     if it.kind in ("field", "attr", "const"):
         return out + [indent + it.text[0] + (f"  # {it.tail}" if it.tail else "")]
     out += [indent + h for h in it.text[:-1]]
     sig = it.text[-1] + ":"
     if it.kind == "def":
-        body = doc_block(it.doc, indent + "    ") + (comment_block(call_lines(it, here), indent + "    ") if calls else [])
-        return out + [indent + sig] + body if body else out + [indent + sig + " ..."]
+        notes = ([f"untyped: {', '.join(it.untyped)}"] if marks and it.untyped else []) + (call_lines(it, here) if calls else [])
+        body = doc_block(it.doc, indent + "    ") + comment_block(notes, indent + "    ")
+        if not body:
+            return out + [indent + sig + " ..."]
+        # Comments alone are not a body: close it with ... as a stub would.
+        return out + [indent + sig] + body + ([] if it.doc else [indent + "    ..."])
     out.append(indent + sig)
     out += doc_block(it.doc, indent + "    ")
     priv_started = False
@@ -547,20 +570,20 @@ def item_text(it: Item, indent: str = "", here: str = "", calls: bool = True) ->
         if m.private and not priv_started:
             out.append(indent + "    # private")
             priv_started = True
-        out += item_text(m, indent + "    ", here, calls)
+        out += item_text(m, indent + "    ", here, calls, marks)
     if not it.members and not it.doc:
         out.append(indent + "    ...")
     return out
 
 
-def module_text(m: Module, calls: bool = True) -> list[str]:
+def module_text(m: Module, calls: bool = True, marks: bool = True) -> list[str]:
     if m.error:
         return [f"# {m.error}"]
     out = doc_block(m.doc, "")
     for it in m.items:
         if out:
             out.append("")
-        out += item_text(it, "", m.qual, calls)
+        out += item_text(it, "", m.qual, calls, marks)
     if m.hidden:
         out += ["", f"# + {m.hidden} private module-level name{'s' if m.hidden != 1 else ''}"]
     return out or ["# no declarations"]
@@ -582,14 +605,38 @@ def count(mods: list[Module]) -> dict[str, int]:
     return c
 
 
+def coverage(m: Module) -> tuple[int, int]:
+    """(fully annotated, all) functions and methods in a module, private and unlisted ones included."""
+    defs: list[Item] = []
+    def walk(items: list[Item]) -> None:
+        for it in items:
+            if it.kind == "def":
+                defs.append(it)
+            walk(it.members)
+    walk(m.items + m.unlisted)
+    return sum(1 for d in defs if not d.untyped), len(defs)
+
+
+def total_coverage(mods: list[Module]) -> tuple[int, int]:
+    pairs = [coverage(m) for m in mods]
+    return sum(t for t, _ in pairs), sum(n for _, n in pairs)
+
+
+def coverage_text(typed: int, total: int) -> str:
+    """A line such as: Typed: 40 of 42 functions and methods (95%). The percentage rounds down, so 100% means all."""
+    return f"Typed: {typed} of {total} functions and methods ({typed * 100 // total}%)." if total else ""
+
+
 def anchor(path: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", path.lower()).strip("-")
 
 
-def render_md(mods: list[Module], title: str, src_link: str | None) -> str:
+def render_md(mods: list[Module], title: str, src_link: str | None, marks: bool = True) -> str:
     c = count(mods)
+    typed = coverage_text(*total_coverage(mods)) if marks else ""
     out = [f"# {title}", "",
-           f"{c['modules']} modules, {c['classes']} classes, {c['functions']} functions, {c['methods']} methods, {c['fields']} fields.", "",
+           f"{c['modules']} modules, {c['classes']} classes, {c['functions']} functions, {c['methods']} methods, {c['fields']} fields."
+           + (f" {typed}" if typed else ""), "",
            "## Contents", ""]
     for m in mods:
         names = ", ".join(it.name for it in m.items[:12]) + (", ..." if len(m.items) > 12 else "")
@@ -598,7 +645,9 @@ def render_md(mods: list[Module], title: str, src_link: str | None) -> str:
     for m in mods:
         link = f" ([source]({src_link}{m.path}))" if src_link is not None else ""
         # An explicit anchor, so the contents links work whatever slug the renderer gives the heading.
-        out += [f'<a id="{anchor(m.path)}"></a>', "", f"## `{m.path}`{link}", "", "```python", *module_text(m), "```", ""]
+        typed = coverage_text(*coverage(m)) if marks else ""
+        out += [f'<a id="{anchor(m.path)}"></a>', "", f"## `{m.path}`{link}", "", *([typed, ""] if typed else []),
+                "```python", *module_text(m, marks=marks), "```", ""]
     out += ["## Index", ""]
     idx = sorted({(it.name, m.path) for m in mods for it in m.items}, key=lambda t: (t[0].lower(), t[1]))
     out += [f"- `{n}`: [`{p}`](#{anchor(p)})" for n, p in idx]
@@ -617,7 +666,7 @@ nav a:hover{background:var(--line)}nav .m{font-weight:600;margin-top:6px}nav .i{
 main{margin-left:300px;padding:16px 24px;max-width:1100px}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:22px 0 6px;border-top:1px solid var(--line);padding-top:12px}
 h2 a.src{font-weight:400;font-size:12px;color:var(--mut);margin-left:8px}.sum{color:var(--mut);margin:0 0 10px}
 pre{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;margin:0}
-.k{color:var(--kw)}.n{color:var(--nm);font-weight:600}.c{color:var(--mut)}.d{color:var(--cm)}
+.k{color:var(--kw)}.n{color:var(--nm);font-weight:600}.c{color:var(--mut)}.d{color:var(--cm)}.u{font-style:italic}
 a.t{color:inherit;text-decoration:underline dotted}a.ln{color:var(--mut);font-size:11px;text-decoration:none;margin-left:6px}
 @media(max-width:800px){nav{position:static;width:auto;border:0}main{margin-left:0}}
 """
@@ -636,7 +685,8 @@ class Ids:
         return qual if n == 1 else f"{qual}-{n}"
 
 
-def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids, listed: set[str]) -> str:
+def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids, listed: set[str],
+               marks: bool = True) -> str:
     """Render one module's declarations with anchors on every declaration and links on known type names."""
     out: list[str] = []
 
@@ -665,10 +715,14 @@ def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids,
             out.append(f"{indent}{sig}{tc}{ln}")
             return
         clines = call_html(it, indent + "    ") if it.kind == "def" else []
+        if marks and it.kind == "def" and it.untyped:
+            clines.insert(0, f'{indent}    <span class="c u"># untyped: {html.escape(", ".join(it.untyped))}</span>')
         out.append(f"{indent}{sig}:{' ...' if it.kind == 'def' and not it.doc and not clines else ''}{ln}")
         for d in doc_block(it.doc, indent + "    "):
             out.append(f'<span class="d">{html.escape(d)}</span>')
         out.extend(clines)
+        if clines and not it.doc:
+            out.append(f"{indent}    ...")
         if it.kind == "class":
             priv = False
             for mem in it.members:
@@ -701,7 +755,7 @@ def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids,
     return "<pre>" + "\n".join(out).strip("\n") + "</pre>"
 
 
-def render_html(mods: list[Module], title: str, src_link: str | None) -> str:
+def render_html(mods: list[Module], title: str, src_link: str | None, marks: bool = True) -> str:
     names: dict[str, str] = {}
     for m in mods:
         for it in m.items:
@@ -716,16 +770,20 @@ def render_html(mods: list[Module], title: str, src_link: str | None) -> str:
             if it.kind in ("class", "def") and it.qual not in listed:
                 listed.add(it.qual)
                 nav.append(f'<a class="i" href="#{html.escape(it.qual)}">{"class " if it.kind == "class" else ""}{html.escape(it.name)}</a>')
+    typed_all = coverage_text(*total_coverage(mods)) if marks else ""
+    typed_all = f" {typed_all}" if typed_all else ""
     ids = Ids()
     listed = {it.qual for m in mods for it in m.items} | {mem.qual for m in mods for it in m.items for mem in it.members}
     body = []
     for m in mods:
         src = f'<a class="src" href="{src_link}{m.path}">source</a>' if src_link is not None else ""
-        body.append(f'<h2 id="{anchor(m.path)}">{html.escape(m.path)}{src}</h2>{html_lines(m, names, src_link, ids, listed)}')
+        typed = coverage_text(*coverage(m)) if marks else ""
+        typed = f'<p class="sum">{typed}</p>' if typed else ""
+        body.append(f'<h2 id="{anchor(m.path)}">{html.escape(m.path)}{src}</h2>{typed}{html_lines(m, names, src_link, ids, listed, marks)}')
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title><style>{CSS}</style></head><body>
 <nav><b>{html.escape(title)}</b>{''.join(nav)}</nav>
-<main><h1>{html.escape(title)}</h1><p class="sum">{c['modules']} modules, {c['classes']} classes, {c['functions']} functions, {c['methods']} methods, {c['fields']} fields. Declarations, docstrings and comments only; no function bodies.</p>
+<main><h1>{html.escape(title)}</h1><p class="sum">{c['modules']} modules, {c['classes']} classes, {c['functions']} functions, {c['methods']} methods, {c['fields']} fields.{typed_all} Declarations, docstrings and comments only; no function bodies.</p>
 {''.join(body)}</main></body></html>
 """
 
@@ -733,8 +791,8 @@ def render_html(mods: list[Module], title: str, src_link: str | None) -> str:
 # ---------------------------------------------------------------- diff
 
 def render_diff(old: list[Module], new: list[Module], title: str) -> str:
-    a = {m.path: module_text(m, calls=False) for m in old}
-    b = {m.path: module_text(m, calls=False) for m in new}
+    a = {m.path: module_text(m, calls=False, marks=False) for m in old}
+    b = {m.path: module_text(m, calls=False, marks=False) for m in new}
     added = [p for p in b if p not in a]
     removed = [p for p in a if p not in b]
     changed = [p for p in b if p in a and a[p] != b[p]]
@@ -793,6 +851,7 @@ def run(argv: list[str] | None) -> int:
     ap.add_argument("--exclude", action="append", metavar="GLOB", help="leave out paths matching GLOB (repeatable)")
     ap.add_argument("--include-tests", action="store_true", help="keep test files (left out by default)")
     ap.add_argument("--no-calls", action="store_true", help="leave out the calls / called-by lines")
+    ap.add_argument("--no-type-marks", action="store_true", help="leave out the untyped marks and the typed counts")
     ap.add_argument("--version", action="version", version=f"pysurface {__version__}")
     a = ap.parse_args(argv)
     t0 = time.perf_counter()
@@ -813,8 +872,8 @@ def run(argv: list[str] | None) -> int:
     os.makedirs(a.out, exist_ok=True)
     stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", name) + (f".{re.sub(r'[^A-Za-z0-9_.-]+', '_', a.ref)}" if a.ref else "")
     md, hp = Path(a.out) / f"{stem}.api.md", Path(a.out) / f"{stem}.api.html"
-    md.write_text(render_md(mods, title, src))
-    hp.write_text(render_html(mods, title, src))
+    md.write_text(render_md(mods, title, src, not a.no_type_marks))
+    hp.write_text(render_html(mods, title, src, not a.no_type_marks))
     print(md)
     print(hp)
     print(f"{len(mods)} modules in {time.perf_counter() - t0:.2f} s", file=sys.stderr)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pysurface"
-version = "0.1.0"
+version = "0.2.0"
 description = "A compact, navigable report of a Python package's API surface: declarations, docstrings and comments, no bodies"
 readme = "README.md"
 license = "BSL-1.0"
