@@ -21,7 +21,10 @@ only on the declarations; --no-calls drops the calls / called-by lines;
 
 Layout rules (after vibelight, a tool that does the same for Rust):
 - one section per module, in path order, opening with the module docstring;
-- classes first, sorted by name; then functions; then constants;
+- re-exports first (package-internal from-imports in __init__.py, and names in __all__),
+  then classes sorted by name, then functions, then constants (capitals and dunders);
+- every decorator is kept, since one can register a declaration (@click.command) as
+  well as change it (@property);
 - a class shows its bases and decorators, its docstring, fields in declared order
   (dataclass and NamedTuple field order is part of the constructor), then methods
   sorted by name, public before private;
@@ -47,7 +50,7 @@ import time
 import tokenize
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, Optional, Union
+from typing import Callable, Iterable, Iterator, Optional, Union
 
 FuncDef = Union[ast.FunctionDef, ast.AsyncFunctionDef]
 Decorated = Union[ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef]
@@ -63,6 +66,11 @@ SKIP_DIRS = {"__pycache__", "node_modules", ".venv", "venv", "build", "dist", ".
 
 class InputError(Exception):
     """The input cannot be used: not a directory, file or repository, or nothing to read."""
+
+
+def is_dunder(name: str) -> bool:
+    """__all__, __version__ and the like: public despite the leading underscore."""
+    return len(name) > 4 and name.startswith("__") and name.endswith("__")
 
 
 def excluded(path: str, globs: tuple[str, ...]) -> bool:
@@ -129,7 +137,7 @@ def sources_from_dir(path: str, skip: tuple[str, ...]) -> dict[str, str]:
 
 @dataclass
 class Item:
-    kind: str                 # "class" | "def" | "field" | "attr" | "const"
+    kind: str                 # "class" | "def" | "field" | "attr" | "const" | "reexport"
     name: str
     qual: str                 # module-qualified anchor id (made unique when rendered)
     lineno: int
@@ -144,6 +152,20 @@ class Item:
     called_by: list[str] = field(default_factory=list)      # resolved: quals of package functions that call it
     owner: Optional[str] = None                             # the enclosing class's qual, for methods
     untyped: list[str] = field(default_factory=list)        # parameters without an annotation, and "return" if it has none
+    target: Optional[str] = None                            # for a re-export: the HTML id of what it names, if listed
+    group: str = ""                                         # for a re-export: the if/try block it sits in, or ""
+
+
+@dataclass
+class Candidate:
+    """A from-import that may be a re-export, before link_reexports decides."""
+    item: Item
+    base: str                 # the module it imports from: dotted from the scan root when relative, as written otherwise
+    relative: bool
+    in_all: bool              # its name is listed in the module's __all__
+    comments: list[str]       # the comment block above the statement, for its first listed name
+    context: str              # the block it sits in, such as "in: try", or ""
+    tail: Optional[str]       # the statement's end comment when no name has its own line, for its first listed name
 
 
 @dataclass
@@ -157,6 +179,9 @@ class Module:
     unlisted: list[Item] = field(default_factory=list)      # private names left out of the listing, kept for calls
     imports: dict[str, tuple[str, Optional[str]]] = field(default_factory=dict)
     # local name -> (module as written, name in it or None for a module import)
+    reexports: list[Candidate] = field(default_factory=list)  # candidate re-exports, emptied by link_reexports
+    refs: list[CallRef] = field(default_factory=list)       # calls made by module-level code, outside any def or class
+    calls: list[str] = field(default_factory=list)          # resolved: quals of package functions that code calls
 
 
 def comment_map(src: str) -> tuple[Comments, set[int]]:
@@ -238,22 +263,19 @@ def args_of(fn: FuncDef) -> str:
     return ", ".join(parts)
 
 
-# Decorators that change what a declaration means. Matched on the last dotted component,
-# so @abc.abstractmethod, @typing.overload and @functools.lru_cache(...) are kept too.
-KEEP_DECOS = {"staticmethod", "classmethod", "property", "abstractmethod", "abstractproperty", "cached_property",
-              "overload", "override", "final", "dataclass", "contextmanager", "asynccontextmanager", "cache",
-              "lru_cache", "total_ordering", "runtime_checkable", "unique", "singledispatch",
-              "singledispatchmethod", "setter", "getter", "deleter"}
+def deco_text(d: ast.expr) -> str:
+    """A decorator as written, with each argument longer than MAXV characters shown as "..."."""
+    if isinstance(d, ast.Call):
+        args = [short(a) for a in d.args]
+        args += [f"{k.arg}={short(k.value)}" if k.arg else f"**{short(k.value)}" for k in d.keywords]
+        return f"@{ast.unparse(d.func)}({', '.join(args)})"
+    return "@" + ast.unparse(d)
 
 
 def deco_lines(node: Decorated) -> list[str]:
-    out = []
-    for d in node.decorator_list:
-        s = ast.unparse(d)
-        last = s.split("(")[0].rsplit(".", 1)[-1]
-        if last in KEEP_DECOS:
-            out.append("@" + s)
-    return out
+    """Every decorator, in source order. A decorator can change a declaration's meaning or
+    register it somewhere (@click.command, @app.route, @pytest.fixture), so none are dropped."""
+    return [deco_text(d) for d in node.decorator_list]
 
 
 def first_line(node: Decorated) -> int:
@@ -285,13 +307,14 @@ def make_def(fn: FuncDef, qual: str, comments: Comments, only: set[int], brief: 
     lead = leading_comments(first_line(fn), comments, only) + ([context] if context else [])
     return Item("def", fn.name, qual, fn.lineno, text, lead, None,
                 docstring(fn, brief), private=fn.name.startswith("_") and not fn.name.endswith("__"),
-                refs=call_refs(fn), owner=owner, untyped=untyped_of(fn, owner is not None))
+                refs=call_refs(ast.walk(fn)), owner=owner, untyped=untyped_of(fn, owner is not None))
 
 
-def call_refs(fn: FuncDef) -> list[CallRef]:
-    """The calls a function makes, as written, in source order, each once: f(), x.f(), self.f()."""
+def call_refs(nodes: Iterable[ast.AST]) -> list[CallRef]:
+    """The calls among nodes (all of a function, or the code a module runs), as written, in source
+    order, each once: f(), x.f(), self.f()."""
     out: list[CallRef] = []
-    calls = sorted((n for n in ast.walk(fn) if isinstance(n, ast.Call)), key=lambda n: (n.lineno, n.col_offset))
+    calls = sorted((n for n in nodes if isinstance(n, ast.Call)), key=lambda n: (n.lineno, n.col_offset))
     for c in calls:
         f = c.func
         ref: CallRef | None = None
@@ -362,6 +385,40 @@ def make_class(cls: ast.ClassDef, mod_qual: str, comments: Comments, only: set[i
     return item
 
 
+def module_level_code(body: list[ast.stmt]) -> Iterator[ast.AST]:
+    """The statements and expressions a module runs outside its functions and class bodies: plain
+    statements, the tests of module-level if blocks, the bodies of try blocks and the types of
+    their except clauses, and the decorators and bases of module-level classes."""
+    for node in body:
+        if isinstance(node, ast.If):
+            yield node.test
+            yield from module_level_code(node.body + node.orelse)
+        elif isinstance(node, ast.Try) or (hasattr(ast, "TryStar") and isinstance(node, ast.TryStar)):
+            yield from module_level_code(node.body)
+            for h in node.handlers:
+                if h.type is not None:
+                    yield h.type
+                yield from module_level_code(h.body)
+            yield from module_level_code(node.orelse + node.finalbody)
+        elif isinstance(node, ast.ClassDef):        # its body is listed; its decorators and bases run here
+            yield from node.decorator_list + node.bases + [k.value for k in node.keywords]
+        elif not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            yield node
+
+
+def executed(nodes: Iterable[ast.AST]) -> Iterator[ast.AST]:
+    """Every node under nodes that runs when they run: a nested function's or lambda's body is
+    skipped, its decorators and defaults are not."""
+    stack = list(nodes)
+    while stack:
+        n = stack.pop()
+        yield n
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            stack += getattr(n, "decorator_list", []) + n.args.defaults + [d for d in n.args.kw_defaults if d]
+        else:
+            stack.extend(ast.iter_child_nodes(n))
+
+
 def module_statements(body: list[ast.stmt], context: str | None = None) -> Iterator[tuple[ast.stmt, str | None]]:
     """Top-level statements, descending into module-level if/try blocks. Yields (node, context),
     where context names the block a definition sits in, such as "in: if TYPE_CHECKING"."""
@@ -408,7 +465,8 @@ def parse_module(path: str, src: str, private: bool, brief: bool) -> Module:
                 funcs.append(f)
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
             tgt = node.targets[0] if isinstance(node, ast.Assign) else node.target
-            if isinstance(tgt, ast.Name) and (tgt.id.isupper() or tgt.id == "__all__") and (private or not tgt.id.startswith("_")):
+            dunder = isinstance(tgt, ast.Name) and is_dunder(tgt.id)
+            if isinstance(tgt, ast.Name) and (tgt.id.isupper() or dunder) and (private or dunder or not tgt.id.startswith("_")):
                 ann = f": {ast.unparse(node.annotation)}" if isinstance(node, ast.AnnAssign) else ""
                 val = f" = {short(node.value)}" if node.value is not None else ""
                 consts.append(Item("const", tgt.id, f"{mod_qual}.{tgt.id}", node.lineno, [f"{tgt.id}{ann}{val}"],
@@ -417,54 +475,242 @@ def parse_module(path: str, src: str, private: bool, brief: bool) -> Module:
     key = lambda i: (i.name, i.lineno)
     items = sorted(classes, key=key) + sorted(funcs, key=key) + sorted(consts, key=key)
     return Module(path, docstring(tree, brief), items, hidden, qual=mod_qual, imports=imports_of(tree, mod_qual),
-                  unlisted=unlisted)
+                  unlisted=unlisted, reexports=reexport_candidates(tree, mod_qual, comments, only),
+                  refs=call_refs(executed(module_level_code(tree.body))))
+
+
+def package_of(mod_qual: str) -> str:
+    """The dotted package a module's relative imports start from: "a.b" for a.b.c and for
+    a.b.__init__, and "" for a top-level module or the top-level __init__."""
+    if mod_qual == "__init__":
+        return ""
+    if mod_qual.endswith(".__init__"):
+        return mod_qual[: -len(".__init__")]
+    return mod_qual.rsplit(".", 1)[0] if "." in mod_qual else ""
+
+
+def import_base(node: ast.ImportFrom, mod_qual: str) -> str:
+    """The module a from-import reads from, made absolute against this module's own dotted name."""
+    base = node.module or ""
+    if node.level:
+        package = package_of(mod_qual)
+        parts = package.split(".") if package else []
+        if node.level - 1 > len(parts):
+            return "." * node.level + (node.module or "")       # above the scan root: matches no module
+        parts = parts[:len(parts) - (node.level - 1)]
+        base = ".".join(p for p in parts + ([base] if base else []) if p)
+    return base
+
+
+def all_names(tree: ast.Module) -> set[str]:
+    """The strings in a module-level __all__ written as a list or tuple literal."""
+    out: set[str] = set()
+    for node, _ in module_statements(tree.body):
+        tgt = node.targets[0] if isinstance(node, ast.Assign) and len(node.targets) == 1 else \
+            node.target if isinstance(node, (ast.AnnAssign, ast.AugAssign)) else None
+        if isinstance(tgt, ast.Name) and tgt.id == "__all__" and isinstance(node.value, (ast.List, ast.Tuple)):
+            out |= {e.value for e in node.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+    return out
+
+
+def reexport_candidates(tree: ast.Module, mod_qual: str, comments: Comments, only: set[int]) -> list[Candidate]:
+    """Module-level from-imports that may be part of the API: every one in an __init__.py, and
+    any whose name is listed in __all__. A name in __all__, or a dunder, is public even with a
+    leading underscore."""
+    is_init = mod_qual == "__init__" or mod_qual.endswith(".__init__")
+    exported = all_names(tree)
+    out: list[Candidate] = []
+    for node, ctx in module_statements(tree.body):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        base = import_base(node, mod_qual)
+        src = "." * node.level + (node.module or "")
+        above = leading_comments(node.lineno, comments, only)
+        alias_lines = {getattr(a, "lineno", None) for a in node.names}
+        one_line = (node.end_lineno or node.lineno) == node.lineno
+        # Python 3.9 records no alias lines, so a multi-line statement's end comment has no known owner there.
+        placed = one_line or (None not in alias_lines and node.end_lineno not in alias_lines)
+        end = trailing_comment(node, comments, only) if placed else None
+        for a in node.names:
+            local = a.asname or a.name
+            if not is_init and local not in exported:
+                continue
+            text = f"from {src} import {a.name}" + (f" as {a.asname}" if a.asname else "")
+            ln = getattr(a, "lineno", None)       # an alias has a line from Python 3.10
+            tail = comments.get(ln) if not one_line and ln is not None and ln not in only else None
+            dunder = is_dunder(local)
+            # "-import" keeps a re-export's HTML id apart from a declaration of the same name.
+            it = Item("reexport", local, f"{mod_qual}.{local}-import", node.lineno, [text], [], tail or None,
+                      private=local.startswith("_") and not dunder and local not in exported, group=ctx or "")
+            out.append(Candidate(it, base, bool(node.level), local in exported, above, ctx or "", end))
+    return out
 
 
 def imports_of(tree: ast.Module, mod_qual: str) -> dict[str, tuple[str, str | None]]:
     """Every import in the module, including ones inside functions: local name -> (module, name in
     it, or None). Relative imports are made absolute against this module's own dotted name."""
     out: dict[str, tuple[str, str | None]] = {}
-    package = mod_qual.rsplit(".", 1)[0] if "." in mod_qual else ""
-    if mod_qual.endswith("__init__"):
-        package = mod_qual.rsplit(".", 1)[0]
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for a in node.names:
                 out[a.asname or a.name.split(".")[0]] = (a.name if a.asname else a.name.split(".")[0], None)
         elif isinstance(node, ast.ImportFrom):
-            base = node.module or ""
-            if node.level:
-                parts = package.split(".") if package else []
-                parts = parts[:len(parts) - (node.level - 1)] if node.level > 1 else parts
-                base = ".".join(p for p in parts + ([base] if base else []) if p)
+            base = import_base(node, mod_qual)
             for a in node.names:
                 if a.name != "*":
                     out[a.asname or a.name] = (base, a.name)
     return out
 
 
+def import_names(mods: list[Module], root_name: str) -> dict[str, list[Module]]:
+    """Each module under the dotted names an absolute import can reach it by. When the scan root is
+    a package, that is the root's name and the path.
+    Otherwise it is the path from the scan root, and, when the module's own directory is a package,
+    the path from each directory in the unbroken run of packages above it, so a namespace package
+    (google/auth/_default.py) and a src layout (src/pkg/core.py as pkg.core) both resolve. A module
+    in a plain directory has only its full path, so a json.py inside a package is never json.
+    A name can belong to several modules, as app.core in two services of one repository."""
+    pkgs = {m.qual[: -len(".__init__")] for m in mods if m.qual.endswith(".__init__")}
+    root_is_pkg = bool(root_name) and any(m.qual == "__init__" for m in mods)
+    found: dict[str, set[str]] = {}
+    by_path: dict[str, Module] = {}
+    for m in mods:
+        by_path[m.path] = m
+        q = "" if m.qual == "__init__" else m.qual[: -len(".__init__")] if m.qual.endswith(".__init__") else m.qual
+        parts = q.split(".") if q else []
+        j = len(parts) - 1                       # parts[:j] is the module's directory
+        while j > 0 and ".".join(parts[:j]) in pkgs:
+            j -= 1
+        if root_is_pkg:                          # everything below a root package is reached through it
+            names = [".".join([root_name] + parts)]
+        elif not m.qual.endswith(".__init__") and len(parts) > 1 and ".".join(parts[:-1]) not in pkgs:
+            names = [q]                          # its directory is not a package
+        else:
+            names = [".".join(parts[k:]) for k in range(max(j, 0) + 1)]
+        for n in names:
+            if n:
+                found.setdefault(n, set()).add(m.path)
+    return {n: [by_path[p] for p in sorted(ps)] for n, ps in found.items()}
+
+
+def closest(cands: list[Module], here: Module) -> Module | None:
+    """The one of several modules sharing an import name that sits nearest here: the most leading
+    path components in common. None when there is none, or two are equally near."""
+    if len(cands) <= 1:
+        return cands[0] if cands else None
+    def shared(m: Module) -> int:
+        n = 0
+        for a, b in zip(m.path.split("/")[:-1], here.path.split("/")[:-1]):
+            if a != b:
+                break
+            n += 1
+        return n
+    ranked = sorted(cands, key=shared, reverse=True)
+    return ranked[0] if shared(ranked[0]) > shared(ranked[1]) else None
+
+
+def module_finder(mods: list[Module]) -> Callable[[str], Optional[Module]]:
+    """A lookup of scanned modules by dotted name. A package's __init__ answers to the package's
+    name, and the top-level __init__ to "". Imports may carry the package's own name in front
+    (tomd.lib.pdf.table for lib.pdf.table), so a unique suffix match also counts."""
+    by_module: dict[str, Module] = {}
+    for m in mods:
+        by_module[m.qual] = m
+        if m.qual == "__init__":
+            by_module[""] = m
+        elif m.qual.endswith(".__init__"):
+            by_module[m.qual[: -len(".__init__")]] = m
+
+    def module_named(name: str) -> Module | None:
+        if name in by_module:
+            return by_module[name]
+        hits = {by_module[q].qual for q in by_module if q and name.endswith("." + q)}
+        return by_module[hits.pop()] if len(hits) == 1 else None
+    return module_named
+
+
+def link_reexports(mods: list[Module], private: bool, root_name: str = "") -> None:
+    """Turn each module's candidate re-exports into listed items, first in the module. A candidate
+    is kept when it is relative, named in __all__, or an absolute import of a module in the report
+    (see import_names). A kept name links to the declaration, module or further re-export it names,
+    when that is in the report. Private names are counted, not shown, unless private is set."""
+    by_qual = {("" if m.qual == "__init__" else m.qual[: -len(".__init__")] if m.qual.endswith(".__init__") else m.qual): m
+               for m in mods}
+    by_import = import_names(mods, root_name)
+    listed = {it.qual for m in mods for it in m.items}
+    chained: list[tuple[Item, Module, str]] = []             # names to look for among another module's re-exports
+    reexported: dict[tuple[str, str], Item] = {}
+    for m in mods:
+        kept: list[Candidate] = []
+        for c in m.reexports:
+            name = c.item.text[0].split(" import ", 1)[1].split(" as ")[0]
+            subname = f"{c.base}.{name}" if c.base else name
+            if c.relative:
+                src = by_qual.get(c.base)
+                sub = by_qual.get(subname) if name != "*" else None
+                known = True
+            else:                            # an absolute name: kept when a module answers to it, linked when one is nearest
+                srcs, subs = by_import.get(c.base, []), by_import.get(subname, []) if name != "*" else []
+                src, sub = closest(srcs, m), closest(subs, m)
+                if src and sub and not (src.path.endswith("__init__.py")
+                                        and sub.path.startswith(src.path[: -len("__init__.py")])):
+                    sub = None                   # from app import api: api must be inside the app it came from
+                known = bool(srcs or subs)
+            if not (known or c.in_all):
+                continue
+            if c.item.private and not private:
+                m.hidden += 1
+                continue
+            if src and name == "*":
+                c.item.target = anchor(src.path)
+            elif src and f"{src.qual}.{name}" in listed:
+                c.item.target = f"{src.qual}.{name}"
+            elif sub:
+                c.item.target = anchor(sub.path)
+            elif src:
+                chained.append((c.item, src, name))
+            kept.append(c)
+            reexported[(m.qual, c.item.name)] = c.item
+        first: dict[int, str] = {}
+        for c in kept:
+            first[c.item.lineno] = min(first.get(c.item.lineno, c.item.name), c.item.name)
+        # Plain statements sort by module and first name; those in if/try blocks keep source order,
+        # so a try's import comes before its except ImportError fallback. A statement's names stay together.
+        kept.sort(key=lambda c: (1, "", "", c.item.lineno, c.item.name) if c.context
+                  else (0, c.item.text[0].split(" import ")[0], first[c.item.lineno], c.item.lineno, c.item.name))
+        seen: set[int] = set()
+        context = ""
+        for c in kept:                       # a statement's comments go on its first listed name only,
+            if c.item.lineno not in seen:    # and a block's context on the first statement of each run
+                seen.add(c.item.lineno)
+                c.item.lead = c.comments + ([c.context] if c.context and c.context != context else [])
+                c.item.tail = c.item.tail or c.tail
+                context = c.context
+        m.items = [c.item for c in kept] + m.items
+        m.reexports = []
+    for _ in range(len(mods)):              # follow chains: pkg re-exports what pkg.sub re-exports
+        progress = False
+        for it, src, name in chained:
+            further = reexported.get((src.qual, name))
+            if it.target is None and further is not None and further.target:
+                it.target, progress = further.target, True
+        if not progress:
+            break
+
+
 def link_calls(mods: list[Module]) -> None:
     """Resolve each function's calls to functions, methods and classes in this package, by name.
     Static and approximate: a call through a variable, an argument or an unknown object is left out."""
     index: dict[str, Item] = {}
-    by_module: dict[str, Module] = {}
     for m in mods:
-        by_module[m.qual] = m
-        if m.qual.endswith(".__init__"):
-            by_module[m.qual[: -len(".__init__")]] = m
         for it in m.items + m.unlisted:
+            if it.kind == "reexport":
+                continue
             index[it.qual] = it
             for mem in it.members:
                 if mem.kind in ("def", "class"):
                     index[mem.qual] = mem
-
-    def module_named(name: str) -> Module | None:
-        """A scanned module by dotted name. Imports may carry the package's own name in front
-        (tomd.lib.pdf.table for lib.pdf.table), so a unique suffix match also counts."""
-        if name in by_module:
-            return by_module[name]
-        hits = {by_module[q].qual for q in by_module if name.endswith("." + q)}
-        return by_module[hits.pop()] if len(hits) == 1 else None
+    module_named = module_finder(mods)
 
     def resolve_name(m: Module, n: str) -> str | None:
         if f"{m.qual}.{n}" in index:
@@ -476,12 +722,12 @@ def link_calls(mods: list[Module]) -> None:
                 return f"{target.qual}.{name}"
         return None
 
-    def resolve(m: Module, it: Item, ref: CallRef) -> str | None:
+    def resolve(m: Module, owner: str | None, ref: CallRef) -> str | None:
         if ref[0] == "name":
             return resolve_name(m, ref[1])
         _, base, attr = ref
-        if base in ("self", "cls") and it.owner:
-            q = f"{it.owner}.{attr}"
+        if base in ("self", "cls") and owner:
+            q = f"{owner}.{attr}"
             return q if q in index else None
         cls = resolve_name(m, base)
         if cls and index[cls].kind == "class":
@@ -498,7 +744,7 @@ def link_calls(mods: list[Module]) -> None:
         for it in items:
             if it.kind == "def":
                 for ref in it.refs:
-                    q = resolve(m, it, ref)
+                    q = resolve(m, it.owner, ref)
                     if q and q != it.qual and q not in it.calls:
                         it.calls.append(q)
                         index[q].called_by.append(it.qual)
@@ -506,13 +752,23 @@ def link_calls(mods: list[Module]) -> None:
 
     for m in mods:
         walk(m, m.items + m.unlisted)
+        for ref in m.refs:      # module-level code, such as a __main__.py calling cli()
+            q = resolve(m, None, ref)
+            if q and q not in m.calls:
+                m.calls.append(q)
+                index[q].called_by.append(MODULE_CALLER + m.path)
     for it in index.values():
-        it.called_by = sorted(set(it.called_by))
+        it.called_by = sorted(set(it.called_by), key=lambda q: (q.startswith(MODULE_CALLER), q))
+
+
+MODULE_CALLER = "module:"       # a called_by entry for a module's top-level code: "module:" + the module's path
 
 
 def short_qual(q: str, here: str) -> str:
     """How a call target is written in a report: Class.method or name inside the same module,
-    module.name (last path component) elsewhere."""
+    module.name (last path component) elsewhere, and a module's path for its top-level code."""
+    if q.startswith(MODULE_CALLER):
+        return q[len(MODULE_CALLER):]
     if q.startswith(here + "."):
         return q[len(here) + 1:]
     mod_and_rest = q.split(".")
@@ -526,9 +782,19 @@ def short_qual(q: str, here: str) -> str:
     return q
 
 
-def call_lines(it: Item, here: str, limit: int = 12) -> list[str]:
+def call_href(q: str) -> str:
+    """The HTML id a call target links to: its declaration, or the module section for top-level code."""
+    return anchor(q[len(MODULE_CALLER):]) if q.startswith(MODULE_CALLER) else q
+
+
+MODULE_CALLS_LABEL = "module-level code calls"
+
+
+def call_lines(it: Item | Module, here: str, limit: int = 12) -> list[str]:
+    """The calls and called-by comment lines of a function, or the module-level calls of a module."""
     out = []
-    for label, qs in (("calls", it.calls), ("called by", it.called_by)):
+    pairs = [(MODULE_CALLS_LABEL, it.calls)] if isinstance(it, Module) else [("calls", it.calls), ("called by", it.called_by)]
+    for label, qs in pairs:
         if qs:
             names = [short_qual(q, here) for q in qs]
             more = f", +{len(names) - limit} more" if len(names) > limit else ""
@@ -552,7 +818,7 @@ def doc_block(lines: list[str], indent: str) -> list[str]:
 
 def item_text(it: Item, indent: str = "", here: str = "", calls: bool = True, marks: bool = True) -> list[str]:
     out = comment_block(it.lead, indent)
-    if it.kind in ("field", "attr", "const"):
+    if it.kind in ("field", "attr", "const", "reexport"):
         return out + [indent + it.text[0] + (f"  # {it.tail}" if it.tail else "")]
     out += [indent + h for h in it.text[:-1]]
     sig = it.text[-1] + ":"
@@ -576,12 +842,32 @@ def item_text(it: Item, indent: str = "", here: str = "", calls: bool = True, ma
     return out
 
 
+def gaps(items: list[Item]) -> list[bool]:
+    """Whether a blank line goes before each item. Re-exports read as import blocks: the names of
+    one statement stay together, a new if/try context starts a block, and a statement with a
+    comment above it stands apart from its neighbours."""
+    out: list[bool] = []
+    prev: Item | None = None
+    commented = False                        # the statement prev belongs to has a comment of its own
+    for it in items:
+        same = prev is not None and prev.kind == it.kind == "reexport" and prev.lineno == it.lineno
+        own = [c for c in it.lead if c != it.group] if it.kind == "reexport" else it.lead
+        if prev is None or not (prev.kind == it.kind == "reexport"):
+            out.append(True)
+        else:
+            out.append(not same and (bool(it.lead) or commented or it.group != prev.group))
+        if not same:
+            commented = bool(own)
+        prev = it
+    return out
+
+
 def module_text(m: Module, calls: bool = True, marks: bool = True) -> list[str]:
     if m.error:
         return [f"# {m.error}"]
-    out = doc_block(m.doc, "")
-    for it in m.items:
-        if out:
+    out = doc_block(m.doc, "") + (comment_block(call_lines(m, m.qual), "") if calls else [])
+    for it, gap in zip(m.items, gaps(m.items)):
+        if out and gap:
             out.append("")
         out += item_text(it, "", m.qual, calls, marks)
     if m.hidden:
@@ -628,7 +914,12 @@ def coverage_text(typed: int, total: int) -> str:
 
 
 def anchor(path: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", path.lower()).strip("-")
+    """A module's HTML id from its path: a/_b.py is a-_b-py. Case and underscores are kept, "/"
+    becomes "-", and any other character is written as ~ and six hex digits, so no two paths
+    share one: _version.py and version.py, Foo.py and foo.py, a-b.py and a/b.py."""
+    stem, ext = (path[:-3], "-py") if path.endswith(".py") else (path, "")
+    return "".join(c if c.isascii() and (c.isalnum() or c == "_") else "-" if c == "/" else f"~{ord(c):06x}"
+                   for c in stem) + ext
 
 
 def render_md(mods: list[Module], title: str, src_link: str | None, marks: bool = True) -> str:
@@ -639,7 +930,8 @@ def render_md(mods: list[Module], title: str, src_link: str | None, marks: bool 
            + (f" {typed}" if typed else ""), "",
            "## Contents", ""]
     for m in mods:
-        names = ", ".join(it.name for it in m.items[:12]) + (", ..." if len(m.items) > 12 else "")
+        named = list(dict.fromkeys(it.name for it in m.items if it.name != "*"))
+        names = ", ".join(named[:12]) + (", ..." if len(named) > 12 else "")
         out.append(f"- [`{m.path}`](#{anchor(m.path)}){': ' + names if names else ''}")
     out.append("")
     for m in mods:
@@ -649,7 +941,7 @@ def render_md(mods: list[Module], title: str, src_link: str | None, marks: bool 
         out += [f'<a id="{anchor(m.path)}"></a>', "", f"## `{m.path}`{link}", "", *([typed, ""] if typed else []),
                 "```python", *module_text(m, marks=marks), "```", ""]
     out += ["## Index", ""]
-    idx = sorted({(it.name, m.path) for m in mods for it in m.items}, key=lambda t: (t[0].lower(), t[1]))
+    idx = sorted({(it.name, m.path) for m in mods for it in m.items if it.name != "*"}, key=lambda t: (t[0].lower(), t[1], t[0]))
     out += [f"- `{n}`: [`{p}`](#{anchor(p)})" for n, p in idx]
     return "\n".join(out) + "\n"
 
@@ -704,13 +996,18 @@ def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids,
         for h in it.text[:-1]:
             out.append(f'{indent}<span class="k">{html.escape(h)}</span>')
         raw = it.text[-1]
-        kw = re.match(r"^(async def |def |class |self\.)?", raw).group(0)
-        rest = raw[len(kw):]
-        tail = link_types(html.escape(rest[len(it.name):]))
+        if it.kind == "reexport":       # "from .cli import cli as main": the local name is last
+            kw, tail = raw[: len(raw) - len(it.name)], ""
+        else:
+            kw = re.match(r"^(async def |def |class |self\.)?", raw).group(0)
+            tail = link_types(html.escape(raw[len(kw) + len(it.name):]))
         kw_html = f'<span class="k">{html.escape(kw)}</span>' if kw else ""
-        sig = kw_html + f'<span class="n" id="{html.escape(ids(it.qual))}">{html.escape(it.name)}</span>' + tail
+        name_html = html.escape(it.name)
+        if it.target:
+            name_html = f'<a class="t" href="#{html.escape(it.target)}">{name_html}</a>'
+        sig = kw_html + f'<span class="n" id="{html.escape(ids(it.qual))}">{name_html}</span>' + tail
         ln = f'<a class="ln" href="{src_link}{m.path}#L{it.lineno}">{m.path.rsplit("/", 1)[-1]}:{it.lineno}</a>' if src_link is not None else ""
-        if it.kind in ("field", "attr", "const"):
+        if it.kind in ("field", "attr", "const", "reexport"):
             tc = f'  <span class="c"># {html.escape(it.tail)}</span>' if it.tail else ""
             out.append(f"{indent}{sig}{tc}{ln}")
             return
@@ -733,12 +1030,14 @@ def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids,
             if not it.members and not it.doc:
                 out.append(f"{indent}    ...")
 
-    def call_html(it: Item, indent: str, limit: int = 12) -> list[str]:
+    def call_html(it: Item | Module, indent: str, limit: int = 12) -> list[str]:
         res = []
-        for label, qs in (("calls", it.calls), ("called by", it.called_by)):
+        pairs = [(MODULE_CALLS_LABEL, it.calls)] if isinstance(it, Module) else [("calls", it.calls), ("called by", it.called_by)]
+        for label, qs in pairs:
             if qs:
-                links = [f'<a class="t" href="#{html.escape(q)}">{html.escape(short_qual(q, m.qual))}</a>' if q in listed
-                         else html.escape(short_qual(q, m.qual)) for q in qs[:limit]]
+                links = [f'<a class="t" href="#{html.escape(call_href(q))}">{html.escape(short_qual(q, m.qual))}</a>'
+                         if q in listed or q.startswith(MODULE_CALLER) else html.escape(short_qual(q, m.qual))
+                         for q in qs[:limit]]
                 more = f", +{len(qs) - limit} more" if len(qs) > limit else ""
                 res.append(f'{indent}<span class="c"># {label}: </span>{", ".join(links)}<span class="c">{more}</span>')
         return res
@@ -747,8 +1046,10 @@ def html_lines(m: Module, names: dict[str, str], src_link: str | None, ids: Ids,
         return f"<pre>{html.escape(m.error)}</pre>"
     for d in doc_block(m.doc, ""):
         out.append(f'<span class="d">{html.escape(d)}</span>')
-    for it in m.items:
-        out.append("")
+    out += call_html(m, "")
+    for it, gap in zip(m.items, gaps(m.items)):
+        if gap:
+            out.append("")
         emit(it, "")
     if m.hidden:
         out += ["", f'<span class="c"># + {m.hidden} private module-level name{"s" if m.hidden != 1 else ""}</span>']
@@ -820,6 +1121,7 @@ def load(args: argparse.Namespace, ref: str | None) -> list[Module]:
     if not srcs:
         raise InputError("no Python files found")
     mods = [parse_module(p, s, args.private, args.brief) for p, s in srcs.items()]
+    link_reexports(mods, args.private, "" if Path(args.path).is_file() else Path(os.path.abspath(args.path)).name)
     if not getattr(args, "no_calls", False):
         link_calls(mods)
     for m in mods:
