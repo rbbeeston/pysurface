@@ -1,6 +1,6 @@
 # pysurface
 
-pysurface reads a Python package and writes a compact outline of its API surface: every module, class, field, method, function and constant, with its signature, its docstring and the comments written beside it, and no function bodies. You see the shape of a whole package in one file that you can skim, search, or hand to a reviewer or a language model.
+pysurface reads a Python package and writes a compact outline of its API surface: every module, class, field, method, function and module-level name, with its signature, its docstring and the comments written beside it, and no function bodies. You see the shape of a whole package in one file that you can skim, search, or hand to a reviewer or a language model.
 
 It reads the source with Python's own parser and never imports or runs the package. It needs no dependencies, no network and no installed package, so it works on a fresh clone and on code that does not run right now. It is fast: about 0.2 seconds for a 70-module package. On tomd, 750 KB of Python source becomes a 150 KB report, or 95 KB with `--brief`.
 
@@ -12,12 +12,12 @@ Opening a codebase file by file is slow for a person and expensive for a languag
 
 - **Two files from one model.** `<name>.api.md` and `<name>.api.html`. Both come from the same parse, so their text always agrees.
 - **A self-contained, linked HTML file.** Inline CSS, no JavaScript, no network requests. A sticky sidebar lists every module, class and function. Every declaration has an anchor, and a type name that matches a class in the report links to it. Colors follow your system's light or dark setting.
-- **A compact Markdown file** with a contents list, one section per module, and an index of every name at the end.
+- **A compact Markdown file** with a contents list, one section per module, and an index of every name at the end. A file with no statements at all, such as an empty `__init__.py`, gets no section.
 - **Comments kept.** Docstrings, the comment block directly above a declaration, and the comment at the end of a field's line all stay with the item they belong to.
-- **What calls what.** Under each function and method, `# calls:` lists the package's own functions, methods and classes it calls, and `# called by:` lists the ones that call it, including private helpers that are not listed themselves. In the HTML each name links to its declaration. `--no-calls` leaves these lines out.
+- **What calls what.** Under each function and method, `# calls:` lists the package's own functions, methods and classes it calls, and `# called by:` lists the ones that call it, including private helpers that are not listed themselves. Calls made by a module's top-level code, such as a `__main__.py` that runs `cli()`, appear as `# module-level code calls:` at the top of that module, and the function shows the module's path in `# called by:`. In the HTML each name links to its declaration. `--no-calls` leaves these lines out.
 - **Where types are missing.** Under each function and method, `# untyped:` names the parameters with no annotation, and `return` when the return type is missing. A method's `self` or `cls` and `__init__`'s return are not counted. Each module, and the report as a whole, opens with a line such as `Typed: 40 of 42 functions and methods (95%)`, counting private and unlisted ones too; the percentage rounds down, so 100% means all of them. `--no-type-marks` leaves these out.
 - **Links back to the source.** Each module and declaration links to its file and line, such as `evidence.py:73`. `--no-source-links` leaves them out.
-- **A declaration diff.** `--diff OLD NEW` compares two git refs and prints only the declarations that changed, as a unified diff per module.
+- **A declaration diff.** `--diff OLD NEW` compares two git refs and prints only the declarations that changed, as a unified diff per module. A hunk inside a class or a long value names it in its `@@` line, as `git diff` names the function a change is in. A file that becomes empty shows as removed, since an empty file has no section.
 
 ## Install
 
@@ -48,19 +48,25 @@ pysurface <repo> --diff <old-ref> <new-ref> [--root <dir>]
 - `--name` names the report. It defaults to the directory's name.
 - `--private` keeps module-level names that start with `_`. Without it they are counted, not shown. A class's private members are always shown, after its public ones under a `# private` line.
 - `--brief` keeps only the first paragraph of each docstring.
-- `--no-source-links` leaves out the links back to files and lines. The output then depends only on the declarations, so reformatting code or reordering classes, functions, methods and constants leaves the files byte for byte the same. Fields keep their declared order on purpose (it is a dataclass's constructor order), so reordering fields does change the output.
+- `--no-source-links` leaves out the links back to files and lines. The output then depends only on the declarations, so reformatting code or reordering classes, functions, methods and module-level names leaves the files byte for byte the same. The one exception is `# module-level code calls:`, which lists calls in the order the code makes them. Fields keep their declared order on purpose (it is a dataclass's constructor order), so reordering fields does change the output.
 - `--source-base URL` puts a prefix in front of every source link, for example `../../` when the report lives two folders below the repository root, or a `https://github.com/<owner>/<repo>/blob/<ref>/` URL. Without it, links are relative paths from the output folder to the source.
-- `--no-calls` leaves out the `# calls:` and `# called by:` lines.
+- `--no-calls` leaves out the `# calls:`, `# called by:` and `# module-level code calls:` lines.
 - `--no-type-marks` leaves out the `# untyped:` lines and the `Typed:` counts.
-- `--exclude GLOB` leaves out matching paths, and may be repeated. Test files (`tests/`, `test_*.py`, `*_test.py`, `conftest.py`) are left out by default; `--include-tests` keeps them.
+- `--exclude GLOB` leaves out matching paths, and may be repeated. Test files (`tests/`, `test_*.py`, `*_test.py`, `conftest.py`) are left out by default; `--include-tests` keeps them. For a Django project, `--exclude '*/migrations/*'` leaves out the generated migrations.
 
-pysurface prints the path of each file it writes on stdout, and the module count and time on stderr. Existing files with the same names are overwritten.
+pysurface prints the path of each file it writes on stdout, and the count of modules in the report and the time on stderr. Existing files with the same names are overwritten.
 
 ## What the output looks like
 
-Each module gets one block. Its docstring comes first, then classes sorted by name, then functions sorted by name, then constants (names in capitals, and `__all__`). Inside a class:
+Each module gets one block. Its docstring comes first, then its re-exports, then classes sorted by name, then functions sorted by name, then the module's other public names sorted by name: every module-level assignment to a name without a leading underscore, whatever its case, so `MAX_SIZE`, `__version__`, `logger`, `app = Flask(__name__)` and Django's `urlpatterns`. A `+=` on such a name, such as `urlpatterns += router.urls`, is listed after its assignment. Variables assigned under `if __name__ == "__main__":` are left out, since they exist only when the file runs as a script; functions and classes defined there are still listed.
 
-- the decorators that change meaning (`@dataclass`, `@property`, `@staticmethod`, `@classmethod`, `@abstractmethod` and similar) and the bases;
+A re-export is a module-level `from ... import ...` that is part of the API. In an `__init__.py` that means every one that imports from the package itself: a relative import, or an absolute one that names a module in the report by a name Python could import it by. That name runs through directories that have an `__init__.py`: `pkg.core` for `src/pkg/core.py` where `src` has none, and `google.auth.crypt` in a namespace package. A module in a directory with no `__init__.py` answers only to its full path from the scan root, behind the root's own name when the root is a package (when the root is a package, every module in it is reached through the root's name). When two modules answer to one name, as `app.core` in two services of one repository, the import is listed and links to the one that shares more of its path with the importing module, or to none when two are equally near. So `from .cli import cli` is listed and `from typing import Any` is not, even when the package has its own `typing.py`. In any module, a name listed in a literal `__all__` is listed too, wherever it comes from. Each name prints as its own import line, `from .cli import cli`, and the names of one statement stay together. Plain statements come first, sorted by module and first name. Statements inside an `if` or `try` block follow in source order, so a `try` import comes before its `except ImportError` fallback, with the block's `# in:` line printed once for each run. A statement with a comment above it stands apart from the others, and the comment is printed once. In the HTML each name links to what it names: a declaration, a module, or what another `__init__.py` re-exports under that name. Names with a leading underscore follow `--private`, like other module-level names, unless they are dunders such as `__version__` or are listed in `__all__`.
+
+Functions and classes keep every decorator, in source order, because a decorator can change what a declaration is (`@property`, `@dataclass`) or register it somewhere (`@click.command()`, `@app.route('/')`). Decorator arguments are shortened as defaults are, below.
+
+Inside a class:
+
+- its decorators and bases;
 - the docstring;
 - fields and class constants in the order they are declared, because a dataclass's field order is its constructor's argument order;
 - instance attributes set as `self.x = ...` in `__init__` or `__post_init__`, in the order they are first assigned, so ordinary classes show their state too;
@@ -69,7 +75,9 @@ Each module gets one block. Its docstring comes first, then classes sorted by na
 
 Definitions inside module-level `if` and `try` blocks (`if TYPE_CHECKING:`, version shims, `except ImportError:` fallbacks) are included, each with a comment naming the block it sits in, such as `# in: if TYPE_CHECKING`. A comment directly above a declaration stays above it, and a comment at the end of its line stays at the end; neither is ever moved to the other place.
 
-Function bodies are replaced by the docstring, or by `...` when there is none. When a function has no docstring but has `# untyped:` or `# calls:` lines, a `...` follows them, as it would in a stub file. Defaults and constant values longer than 60 characters print as `...`.
+Function bodies are replaced by the docstring, or by `...` when there is none. When a function has no docstring but has `# untyped:` or `# calls:` lines, a `...` follows them, as it would in a stub file.
+
+Defaults and values are kept to 60 characters. A longer call keeps its callee and as many leading arguments as fit, so `models.ForeignKey('LibraryVersion', on_delete=models.CASCADE, related_name='commits')` prints as `models.ForeignKey('LibraryVersion', ...)`; anything else that is too long prints as `...`. That `...` stands for the arguments left out, so it can follow a keyword argument. An assigned value that is a long list, tuple, set or dict literal, or a sum of them such as `urlpatterns = [...] + other_patterns`, prints one element per line instead, each element shortened the same way to 100 characters. Past 100 elements, a `# +N more` line stands for the rest.
 
 ```python
 @dataclass
@@ -88,7 +96,7 @@ def reader_error(stage: str, page, exc: BaseException, table=None) -> None:
 
 ## Warnings and exit codes
 
-A file that does not parse is shown as a one-line note in its section, and a warning goes to stderr as `warning: <file>: <message>`. The run goes on.
+A file that does not parse is shown as a one-line note in its section, and a warning goes to stderr as `warning: <file>: <message>`. A warning Python raises while parsing a file, such as an invalid escape sequence in a string, goes to stderr as `warning: <file>: line <n>: <message>`. With `--diff`, warnings come from the new ref only. The run goes on.
 
 - `0`: the files were written, warnings included.
 - `1`: the input cannot be used: the path does not exist, it is not a `.py` file, git cannot read the ref, or there are no Python files. The reason is printed on stderr.
@@ -100,8 +108,11 @@ A file that does not parse is shown as a one-line note in its section, and a war
 - Names are not resolved across modules. A type name links in the HTML when a class of that name exists anywhere in the report, the first one found by path order.
 - Comments are kept only next to declarations. Comments inside function bodies are left out with the bodies.
 - Calls are found statically, by name: `f()`, `module.f()`, `Class.f()`, `self.f()`, through imports anywhere in the module, including inside functions. A call through a variable, an argument, a returned object or a dynamic lookup (`obj.f()` where `obj` was built elsewhere) is not resolved and is left out rather than guessed, so the lists can be incomplete but should not be wrong. At most 12 names are shown per line, then `+N more`. The declaration diff (`--diff`) leaves calls and untyped marks out, so it shows only declaration changes.
+- Module-level names are read from assignments to a single name. `a, b = ...` lists neither, `a = b = ...` lists only `a`, and a method call such as `router.register(...)` or `urlpatterns.append(...)` is not shown.
 - Instance attributes are read from `__init__` and `__post_init__` only. Attributes first set in other methods, or through `setattr`, do not appear.
 - `if` and `try` blocks are followed at module level only, not inside class bodies.
+- Re-exports are read from `from ... import ...` only. A plain `import pkg.sub` in an `__init__.py` is not listed, and `__all__` is read only when it is a list or tuple of string literals. On Python 3.9, the comments beside the names of an import split over several lines, including one after its closing parenthesis, are not kept, because the parser does not record which line each name is on. On any version, a comment on the opening line, `from .a import (  # note`, is not kept.
+- Module-level calls are the calls a module makes when it is imported or run: its plain statements, the tests of its module-level `if` blocks, the bodies of its `try` blocks and the types in their `except` clauses, and the decorators and bases of its module-level classes. Function and lambda bodies are not included. Decorators on functions count as calls of the function they decorate.
 
 ## pysurface's own report
 
